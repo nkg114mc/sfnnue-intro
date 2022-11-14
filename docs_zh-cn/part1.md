@@ -13,7 +13,7 @@
 
 一个显而易见的探索方向似乎是人们凭直觉就能想到的：基于alpha-beta搜索的程序需要调用估值函数对当前局面输出一个评估分值，即某一方获胜的概率。它的准确与否直接决定了对搜索的导向是否正确。既然神经网络的表示能力如此强大，为什么不把传统手写的估值函数换成一个神经网络模型，然后利用深度学习方法训练这个模型，来提高估值函数的准确性？
 
-事实上，“将估值函数形式化为一个机器学习模型，并使用机器学习技术去训练它“这件事，很早就有人做了。例如，于上世纪五十年代就被提出的[Temporal Difference Learning](https://www.chessprogramming.org/Temporal_Difference_Learning )，以及1997年由Arthur Samuel，Don Beal和Martin Smith进一步改进的TD-Leaf(lambda)，被成功应用到KnightCap和CilkChess两个程序上。然而那个时候的人们并不知道引入非线性模型能够改进模型的表示能力，计算机有限的算力也不支持使用更大规模的训练数据。
+事实上，“将估值函数形式化为一个机器学习模型，并使用机器学习技术去训练它“这件事，很早就有人做了。例如，于上世纪五十年代就被提出的[Temporal Difference Learning](https://www.chessprogramming.org/Temporal_Difference_Learning )，以及1997年由Arthur Samuel，Don Beal和Martin Smith进一步改进的[TD-Leaf(lambda)](https://arxiv.org/pdf/cs/9901001.pdf)，被成功应用到KnightCap和CilkChess两个程序上。然而那个时候的人们并不知道引入非线性模型能够改进模型的表示能力，计算机有限的算力也不支持使用更大规模的训练数据。
 
 2015年，来自帝国理工学院的硕士生Matthew Lai改进了TD-Leaf(lambda)在国象中的训练方法，将原来的线性模型替换为一个简易的三层神经网络，并发布了实验性的国象程序[Giraffe](https://arxiv.org/pdf/1509.01549v1.pdf )。经过大概一周的训练，Giraffe从完全乱下棋水平，进步到了2400ELO（FIDE标准下的“象棋大师”候选人水平），算是非常巨大的进步。不得不说在PyTorch还没有发布的2015年，Matthew为了在训练中使用Torch，要先把网络本身以及一些训练需要用到的函数写成Lua程序，再用Torch自带的C++库将这些Lua程序封装并与自己国象程序的C++代码粘接在一起。可以说Giraffe能取得这样的成绩，Matthew付出的努力可谓“可歌可泣”。然而Giraffe只是在深度学习时代对这一方法的第一步探索，距离挑战世界一流的国象程序还是差的太远了。
 
@@ -36,23 +36,23 @@ NNUE的全名是[Efficiently Updatable Neural Network](https://github.com/ynasu8
 
 毫无疑问，Stockfish-NNUE是继Giraffe之后对“alpha-beta搜索+神经网络估值”这一方法最成功的一次尝试。在上文提到的三个问题中，Stockfish-NNUE都给出了相对不错的答案。这使得使用alpha-beta搜索的程序设计者们又有了一丝新的希望，尤其是在Lc0稳坐第一名近一年之时，NNUE技术的应用使Stockfish再次成为了Lc0“第一名”的挑战者之一。之后我会分几次更具体介绍一下NNUE在Stockfish中的应用。
 
+<!--
 <p align="center">
   <img alt="p1-1" src="p1-1.png" width="300">
   <br> <em> CCRL闪电赛排名前十名（截止于2020年9月12日）</em>
 </p>
 
-![title](./img/p1-1.png =200x200)
+![title](./img/p1-1.png)
 <br> <em> CCRL闪电赛排名前十名（截止于2020年9月12日）</em>
-
+-->
 
 | ![title](./img/p1-1.png) |
 | :---:       |
-| CCRL闪电赛排名前十名（截止于2020年9月12日）|
+| <em>CCRL闪电赛排名前十名（截止于2020年9月12日）</em> |
+
 
 ### References
 
-https://github.com/ynasu87/nnue/blob/master/docs/nnue.pdf
-
-NNUE - Chessprogramming wiki
-
-Stockfish NNUE - Chessprogramming wiki
+* [https://github.com/ynasu87/nnue/blob/master/docs/nnue.pdf](https://github.com/ynasu87/nnue/blob/master/docs/nnue.pdf)
+* [NNUE - Chessprogramming wiki](https://www.chessprogramming.org/NNUE)
+* [Stockfish NNUE - Chessprogramming wiki](https://www.chessprogramming.org/Stockfish_NNUE)
