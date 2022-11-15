@@ -4,6 +4,7 @@
 
 <h1 align="center">国际象棋程序Stockfish NNUE设计简介（三）网络结构</h1>
 
+
 由于要限制向前传播的计算时间，NNUE的网络结构并不复杂，是典型的全连接神经网络，总共只有四层。其中第一层（输入层）参数数量非常巨大，后三层则相对较小，呈现“头大身子小”的形状。下面的图是Nodchip制作的关于HalfKP_256X2_32_32的网络结构图。
 
 | ![title](./img/p3-1.png) |
@@ -89,7 +90,7 @@ y = clip((x / 16), -32000, 32000)
 
 其中，clip函数类似ClippedRelu层的变换，将超出上界或下界的输入值替换为上界或下界。从上一部分的描述可以看到，Network最后一层输出范围是127*127*32 - (-127*128*32) = 1036320，恰好是一个20位整型变量的取值范围。除以16相当于右移4位，结果正好是一个16位整数，范围[-32768，+32767]。裁剪掉绝对值超过32000的部分，就得到了一个合法的Stockfish局面估值。
 
-为了避免语言描述的不准确，我用Pytorch实现了一下以上描述的NNUE网络（不包含最终估值输出的变换），代码详见[Github](https://github.com/nkg114mc/sfnnue-intro/blob/master/pytorch-nnue-net.py)。
+为了避免语言描述的不准确，我用Pytorch实现了一下以上描述的NNUE网络（不包含最终估值输出的变换），代码详见[Github](https://github.com/nkg114mc/sfnnue-intro/blob/master/pytorch-nnue-net.py)[^1]。
 
 
 ---
@@ -153,3 +154,8 @@ Features=HalfKP(Friend)[41024->256x2],Network=AffineTransform[1<-32](ClippedReLU
 > SIMD的用法是减少计算延迟用的。在剪枝的时候，剪枝算法的batch_size并不会太大（传统剪枝的batch_size其实是1，因为每次只针对一个局面判断是否剪枝）。如果此时使用GPU，会带来很大的延迟（传数据去GPU，剪枝，再传回来，延迟并不可以忽略）。现在鳕鱼干NNUE搜索的速度大约是每秒几千万个节点，GPU很难在每秒处理几千万个节点，如果真的用神经网络，只要是块nvidia的显卡计算速度都比（同时代）cpu快10倍左右——但考虑到通信成本，我们并不能完美利用GPU的计算速度。
 
 由于alpha-beta搜索的序列性（即子节点要按顺序搜索，因为不知道哪个会发生beta剪枝），NNUE的向前传播需要在batch_size为1的条件下进行。CPU和GPU通信是有延迟的。当batch_size较大时，GPU带来的加速完全可以抵消这种延迟。然而当batch_size = 1时，延迟的成本完全盖过了GPU加速的收益，得不偿失。
+
+
+### 参考
+
+[^1]: 该网络结构是2020年Stockfish-NNUE最初发布时的版本。此后网络结构由经过了几次更新，如金已经和本文描述的不太一样了，请参考nnue-pytorch项目的文档以了解最新的网络结构。
