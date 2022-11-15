@@ -13,7 +13,7 @@
 
 其中最左侧棋盘表示部分光看图的话有些不好理解。借用上一篇提到的概念，"active"指己方，"opponent"指对方。"King, Piece - Squares"其实是King Square - Piece Square，也就是“王所在格子”和“其他棋子所在格子”的组合。我在上一篇中将此组合定义为了“位置关系”。图上剩下的部分就是网络结构。 在正式的介绍网络结构之前，先介绍一下NNUE网络中用到的各种子结构，相当于PyTorch中的nn.Module。
 
-**AfflineTransformer Layer:** 也就是PyTorch里的nn.Linear，就是最简单的  。AfflineTransformer(x, dinput, doutput, type)表示该层的输入为x，输入维度为dinput，输出维度为doutput，以及参数类型是type。
+**AfflineTransformer Layer:** 也就是PyTorch里的nn.Linear，就是最简单的$y=wx+b$。AfflineTransformer(x, dinput, doutput, type)表示该层的输入为x，输入维度为dinput，输出维度为doutput，以及参数类型是type。
 
 **ClippedReLu Layer:** 不同于原版ReLu，ClippedReLu不但有下界，还有一个上界。所有小于下届（lowerbound）或大于上界的（upperbound）的输入都会分别被替换为下界或上界。
 
@@ -44,9 +44,10 @@ AfflineTransformer(x, 41024, 256, int16) -> ClippedReLu(x, 0, 127)
 
 以上的变换只考虑了己方或对方当中的某一方。实际上双方的棋盘表示都需要经过此变换。因此对任意一个己方和对方的棋盘表示分别为x1和x2的局面，FeatureTransformer中的变换严格来说是如下进行的：
 
-AfflineTransformer(x1, 41024, 256, int16) -> ClippedReLu(x1', 0, 127) -> y1
-AfflineTransformer(x2, 41024, 256, int16) -> ClippedReLu(x2', 0, 127) -> y2
-y = y1  y2
+* AfflineTransformer(x1, 41024, 256, int16) -> ClippedReLu(x1', 0, 127) -> y1
+* AfflineTransformer(x2, 41024, 256, int16) -> ClippedReLu(x2', 0, 127) -> y2
+* y = y1 $\oplus$ y2
+
 注意以上计算y1和y2用到的参数是一样的，只是输入有两个，因此输出也是两个：y1与y2，各自256维。按顺序拼接在一起后，就得到512维的输出y。
 
 
@@ -56,13 +57,13 @@ y = y1  y2
 
 以上的层只是为了准确的描述。实际上第一层的输出并不是在估值时才通过调用向前传播来计算，而是也和棋盘表示一起随着棋局着法执行和撤销增量进行的。NNUE将第一层单独拿出来也是为便于进行这种增量计算。
 
-如上篇所述，某一方的棋盘表示x是一个二进制的稀疏向量，其非零元素下标集合为  。我们假设x是一个41024维的横向量，那么对应的，AfflineTransformer 中的b也是一个256维的横向量，w的形状为41024 x 256。我们可以把w的每一行看作一个向量，于是w可以表示为41024个256维的行向量组成的向量数组， 第  行向量用  表示。那么，wx+b就可以简化为一串向量累加运算：  。这一过程和我们在NLP中使用word embedding矩阵计算一个句子（假设句子encoding是由其包含的所有不重复词的one hot encoding相加得来的）的embedding的过程极为相似。
+如上篇所述，某一方的棋盘表示x是一个二进制的稀疏向量，其非零元素下标集合为$\{i_1, i_2, ..., i_k\}$。我们假设x是一个41024维的横向量，那么对应的，AfflineTransformer 中的b也是一个256维的横向量，w的形状为41024 x 256。我们可以把w的每一行看作一个向量，于是w可以表示为41024个256维的行向量组成的向量数组， 第$i$行向量用$w_i$表示。那么，wx+b就可以简化为一串向量累加运算：$wx+b = \sum^k_{j}w_{i_j} + b$。这一过程和我们在NLP中使用word embedding矩阵计算一个句子（假设句子encoding是由其包含的所有不重复词的one hot encoding相加得来的）的embedding的过程极为相似。
 
 | ![title](./img/p3-3.png) |
 | :---: |
-| <em>稀疏二进制向量x与w做乘法可以简化为挑选w中x的非零元素所对应的行的和。类比NLP中的例子，如果忽略b，并假设x是一个词的one hot encoding，那么这个过程就是在计算x的wording embedding。</em> |
+| <em>稀疏二进制向量x与w做乘法可以简化为挑选w中x的非零元素所对应的行的和。类比NLP中的例子，如果忽略b，并假设x是一个词的one hot encoding，那么这个过程就是在计算x的wording embedding</em> |
 
-随着对局的进行，x非零元素下标集合也在增量的改变，对应的以上累加结果也可增量的改变。可以设想一下，如果每个  是一个数字的话，这个累加的更新过程就变的极其简单快速了：只要减掉从集合中消失了的下标对应的  ，再加上新出现的  就可以了。其实换成向量，过程也类似，只是数字的加减变成了若干256维的整型向量的加减法。如果向量的加减也能像数字加减一样，那一次向前传播的计算速度就会大大加快。而这正是NNUE使用整型参数的最终目的：利用高级CPU指令实现快速向量加减法。实际实验证明，即使仅使用SSE4.2指令集的CPU上，Stockfish-NNUE的搜索速度也比用使用for循环实现向量加减法的版本快了近一倍，这将对棋力产生重大影响。而使用最新的AVX2或AVX512指令集的Stockfish-NNUE将会更快。
+随着对局的进行，x非零元素下标集合也在增量的改变，对应的以上累加结果也可增量的改变。可以设想一下，如果每个$w_i$是一个数字的话，这个累加的更新过程就变的极其简单快速了：只要减掉从集合中消失了的下标对应的$w_i$，再加上新出现的$w_j$就可以了。其实换成向量，过程也类似，只是数字的加减变成了若干256维的整型向量的加减法。如果向量的加减也能像数字加减一样，那一次向前传播的计算速度就会大大加快。而这正是NNUE使用整型参数的最终目的：利用高级CPU指令实现快速向量加减法。实际实验证明，即使仅使用SSE4.2指令集的CPU上，Stockfish-NNUE的搜索速度也比用使用for循环实现向量加减法的版本快了近一倍，这将对棋力产生重大影响。而使用最新的AVX2或AVX512指令集的Stockfish-NNUE将会更快。
 
 
 ### Network部分
@@ -88,44 +89,45 @@ y = clip((x / 16), -32000, 32000)
 
 其中，clip函数类似ClippedRelu层的变换，将超出上界或下界的输入值替换为上界或下界。从上一部分的描述可以看到，Network最后一层输出范围是127*127*32 - (-127*128*32) = 1036320，恰好是一个20位整型变量的取值范围。除以16相当于右移4位，结果正好是一个16位整数，范围[-32768，+32767]。裁剪掉绝对值超过32000的部分，就得到了一个合法的Stockfish局面估值。
 
-为了避免语言描述的不准确，我用Pytorch实现了一下以上描述的NNUE网络（不包含最终估值输出的变换），代码详见Github。
+为了避免语言描述的不准确，我用Pytorch实现了一下以上描述的NNUE网络（不包含最终估值输出的变换），代码详见[Github](https://github.com/nkg114mc/sfnnue-intro/blob/master/pytorch-nnue-net.py)。
 
-
-<br>
 
 ---
 
-<br>
 
 下面的内容是关于NNUE网络及其向前传播的具体实现，属于源代码的细节，如果只是对NNUE理论感兴趣的童鞋可以直接忽略。
 
 ### nn.bin文件结构
 
-Stockfish的测试系统FishTest专门创建了一个页面NN stats，用于用户上传他们训练出来的权重。如果你曾经从上面的网页下载过权重，就会注意到这个二进制文件有大约21MB。这里就简单介绍一下这个文件的结构。nn.bin文件按照字节流的顺序，存储了以下信息：
+Stockfish的测试系统FishTest专门创建了一个页面[NN stats](https://tests.stockfishchess.org/nns)，用于用户上传他们训练出来的权重。如果你曾经从上面的网页下载过权重，就会注意到这个二进制文件有大约21MB。这里就简单介绍一下这个文件的结构。nn.bin文件按照字节流的顺序，存储了以下信息：
 
 #### Header部分
 
-version: uint32，4字节。版本信息，为将来升级而预留的信息。
-hashvalue: uint32，4字节。Header的hashvalue是FeatureTransformer和Network部分各自的hashvalue异或之后的结果。
-arch_name_size: uint32，4字节。arch_name是一个以字节流存储的字符串，包含两部分：长度和内容。这里首先是4字节的长度信息，表示这个字符串包含的字符个数。每个字符一字节。
-arch_name_string: char[]，<arch_name_size>字节。就是字符串的内容。例如，HalfKP_256X2_32_32结构会输出如下内容，其实就是一个人类可读的网络结构描述。
+* **version**: uint32，4字节。版本信息，为将来升级而预留的信息。
+* **hashvalue**: uint32，4字节。Header的hashvalue是FeatureTransformer和Network部分各自的hashvalue异或之后的结果。
+* **arch_name_size**: uint32，4字节。arch_name是一个以字节流存储的字符串，包含两部分：长度和内容。这里首先是4字节的长度信息，表示这个字符串包含的字符个数。每个字符一字节。
+* **arch_name_string**: char[]，<arch_name_size>字节。就是字符串的内容。例如，HalfKP_256X2_32_32结构会输出如下内容，其实就是一个人类可读的网络结构描述。
+
+```
 Features=HalfKP(Friend)[41024->256x2],Network=AffineTransform[1<-32](ClippedReLU[32](AffineTransform[32<-32](ClippedReLU[32](AffineTransform[32<-512](InputSlice[512(0:512)])))))
+```
 
 #### FeatureTransformer部分
 
-hashvalue: uint32，4字节。hashvalue是由输入维度，输出维度等重要参数为输入计算出的32位哈希值，以保证读入权重的网络结构与Stockfish-NNUE正在使用的网络结构是一致的。
-bias: int16[]，256 * 2字节。存储输入层的b向量。
-weights: int16[]，41024 * 256 * 2字节。存储输入层的w矩阵。w本来是一个二维数组，这里NNUE将它拉平成为了一个一维数组。拉平的方法是先行后列，也就是保证行向量元素的存储空间依旧连续。
+* **hashvalue**: uint32，4字节。hashvalue是由输入维度，输出维度等重要参数为输入计算出的32位哈希值，以保证读入权重的网络结构与Stockfish-NNUE正在使用的网络结构是一致的。
+* **bias**: int16[]，256 * 2字节。存储输入层的b向量。
+* **weights**: int16[]，41024 * 256 * 2字节。存储输入层的w矩阵。w本来是一个二维数组，这里NNUE将它拉平成为了一个一维数组。拉平的方法是先行后列，也就是保证行向量元素的存储空间依旧连续。
 
 #### Network部分
 
-hashvalue: uint32，4字节。与FeatureTransformer的hashvalue类似。这里的hashvalue是之后三层各自计算出的hashvalue异或在一起之后的结果。
-bias: int8，32 * 1字节。存储第二层的b向量。
-weights: int8[]，512 * 32 * 1字节。存储第二层的w矩阵。注意这里的w的拉平方法与FeatureTransformer正好相反，是先列后行，保证每个列向量元素的存储空间依旧连续。
-bias: int8[]，32 * 1字节。存储第三层的b向量。
-weights: int8，32 * 32 * 1字节。存储第三层的w矩阵，先列后行。
-bias: int8[]，1 * 1字节。存储第四层的b向量。
-weights: int8[]，32 * 1 * 1字节。存储第四层的w矩阵，先列后行。
+* **hashvalue**: uint32，4字节。与FeatureTransformer的hashvalue类似。这里的hashvalue是之后三层各自计算出的hashvalue异或在一起之后的结果。
+* **bias**: int8，32 * 1字节。存储第二层的b向量。
+* **weights**: int8[]，512 * 32 * 1字节。存储第二层的w矩阵。注意这里的w的拉平方法与FeatureTransformer正好相反，是先列后行，保证每个列向量元素的存储空间依旧连续。
+* **bias**: int8[]，32 * 1字节。存储第三层的b向量。
+* **weights**: int8，32 * 32 * 1字节。存储第三层的w矩阵，先列后行。
+* **bias**: int8[]，1 * 1字节。存储第四层的b向量。
+* **weights**: int8[]，32 * 1 * 1字节。存储第四层的w矩阵，先列后行。
+
 注意，两部分对w的存储有所不同：FeatureTransformer中的w是按照行向量优先存储的，而其他层的w则是按照列向量优先存储。初次遇到这种不一致可能会很费解，然而如果搞明白了NNUE是如何做矩阵乘法的，就不难理解了。因为在FeatureTransformer部分，矩阵乘法计算主要以w部分的行向量相加来进行，因此保证行向量优先便于成块的读取内存中w的行向量来作为CPU向量指令的操作数。相反，在Network部分，矩阵乘法则要先计算输入向量与w列向量的点积，因此需要成块读取的操作数就变成了列向量。这一切都是为了CPU的向量指令能够方便的从内存中读取操作数而设计的。
 
 | ![title](./img/p3-6.png) |
