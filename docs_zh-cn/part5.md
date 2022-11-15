@@ -123,7 +123,13 @@ $$W(P)=\frac{1}{1+10^{-P/4}}$$
 
 进一步的，作者通过换底公式把原函数中的底数10换成了e，这样W(P)就有了类似sigmoid函数的形式（不太清楚为什么转换为sigmoid形式，猜测可能是求导方便？）：
 
-$$W(P)$$
+$$
+\begin{align}
+W(P) &= \frac{1}{1+10^{−P/4}} \nonumber\\
+     &= \frac{1}{1+\exp(−P/4*\log(10))} \nonumber\\
+     &= sigmoid(P/4*\log(10)) \nonumber
+\end{align}
+$$
 
 在此基础上，再把"兵值归一化"的计算过程 P = value / PawnValueEg 代入，于是得到了最终形式：
 ```
@@ -135,10 +141,10 @@ winning_percentage(value) = sigmoid(value / PawnValueEg / 4.0 * log(10.0))
 
 Nodchip的代码中用到了两种基础loss：
 
-1. Mean Square Error：
-1. Cross-Entropy：
+1. **Mean Square Error**: $L_{MSE}(Y,\hat{Y})=\frac{1}{n}\sum_{i}^{n}(y_i-\hat{y_i})^2\displaystyle$
+1. **Cross-Entropy**: $L_{CE}(Y,\hat{Y})=-\frac{1}{n}\sum_{i}^{n}\left[ y_i\log(\hat{y_i}) + (1-y_i)\log(1-\hat{y_i}) \right]\displaystyle$
 
-其中，MSE Loss的输入值域可以是任意范围，而Cross Entropy Loss的输入必须是概率，也就是输入值域必须为  。
+其中，MSE Loss的输入值域可以是任意范围，而Cross Entropy Loss的输入必须是概率，也就是输入值域必须为[0, 1]。
 
 ### p、q、t、m变量
 
