@@ -158,4 +158,4 @@ Features=HalfKP(Friend)[41024->256x2],Network=AffineTransform[1<-32](ClippedReLU
 
 ### 参考
 
-[^1]: 该网络结构是2020年Stockfish-NNUE最初发布时的版本。此后网络结构由经过了几次更新，如金已经和本文描述的不太一样了，请参考nnue-pytorch项目的文档以了解最新的网络结构。
+[^1]: 该网络结构是2020年Stockfish-NNUE最初发布时的版本。此后网络结构由经过了几次更新，如今已经和本文描述的不太一样了，请参考nnue-pytorch项目的文档以了解最新的网络结构。
