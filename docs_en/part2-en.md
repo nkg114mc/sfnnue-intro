@@ -11,7 +11,7 @@
 
 NNUE的棋盘表示并未用到任何需要复杂计算的高级信息，仅使用了朴素的棋子与所在格子的组合枚举。作为NNUE估值网络的输入，每一个棋盘局面被表示成为一个41024 x 2 = 82048维的二进制向量。其中41024维是两个棋手中某一方的棋盘表示，而2指棋手双方。注意，这里的x2指的并不是简单的”白方、黑方“，而是指“己方、对方”。
 -->
-Board representation, which quantifies the static information of a chess position into a vector representation, is an important component of the problem formulation. It is also called "feature engineering" in the context of machine learning. In this article we will only introduce the network architecture used in Stockfish 12, which is HalfKP_256X2_32_32. The board representation of NNUE does not use any advanced information that requires complated computations. Instead, it only uses enumerations of piece-square combinations of the current board. 
+Board representation, which quantifies the static information of a chess position into a vector representation, is an important component of the problem formulation. It is also called "feature engineering" in the context of machine learning. In this article we will only introduce the network architecture used in Stockfish 12, which is HalfKP_256X2_32_32. The board representation of NNUE does not use any advanced information that requires complicated computations. Instead, it only uses enumerations of piece-square combinations of the current board. 
 
 As the input of NNUE evaluation network, each position is represented as a 41024 x 2 = 82048-dimensional binary vector, where 41024 refers to the dimension of the board representation of only one side, and 2 refers to both sides (players). Note that here x2 does not simply mean "white side, black side", but means "our side, their side".
 
@@ -31,7 +31,7 @@ The classic Min-Max search stipulates that in a two-player zero-sum game, one pl
 
 The evaluation function only needs to return a probability between [-1.0, +1.0] to indicate whether the current board status is more favorable for the max side or the min side (determined by the sign: + means that the maximum party is dominant, and vice versa) side is dominant), and the degree of advantage (determined by the absolute value, the greater the degree of advantage). 
 
-It it easy to realize that min search function is doing almost exactly the same thing as the max side search, except that the signs are reversed. So, we have the Nega-Max search that unifies both two sides into one search function.
+It is easy to realize that min search function is doing almost exactly the same thing as the max side search, except that the signs are reversed. So, we have the Nega-Max search that unifies both two sides into one search function.
 ```
 int NegaMax(int depth) {
     if (depth == 0) return evaluate(side_to_move);
@@ -55,15 +55,12 @@ int NegaMax(int depth) {
 而NNUE的估值函数，只是将最后一步的减法内化到网络计算当中去了。
 -->
 In a Nega-Max search, both sides are max sides. When searching for each node, Nega-Max will flip the sign of evaluation scores returned from its child nodes, so that the original maximum value from the child node becomes the minimum value when it reaches this ply.
-
-
 Moreover, the evaluation will also be regarded as a Nega-Max search of 0 ply - the evaluation function does not need to search (because the depth to be searched is 0), but the sign flip is still necessary. 
-
-In another words: the evaluation function should output the evaluation score assuming that the current player is the max side. This "the side who is currently playing chess" is so-called "our side".
+In other words: the evaluation function should output the evaluation score assuming that the current player is the max side. This "the side who is currently playing chess" is so-called "our side".
 
 In most chess programs implemented with the traditional approach (alpha-beta search + hand-written evaluation), the sign inversion of evaluation score is done as the following two steps:
 
-1. First, the evaluation function score the situation of both sides separately. Usually this score is a non-negative number.
+1. First, the evaluation function scores the situation of both sides separately. Usually this score is a non-negative number.
 2. Compute the between the "own" score minus the "opponent" score as an evaluation score Returns the difference.
 
 The NNUE evaluation function only internalizes that "subtraction" into the network computation.
@@ -109,11 +106,10 @@ In order to solve this problem, when NNUE indicates the position of the black pi
 So how is the 41024 dimension calculated?
 
 Basically, this 41024-dimensional vector represents: the combination of one's "king's grid" and all "the grids of chess pieces other than the opponent's king". 
-
-Here 41024 = 64 * (2 * 5 * 64 + 1), where 64 is the enumerated number of grids where the king of one's own side is located, and (2 * 5 * 64 + 1) is the number of grids where the chess pieces other than the opponent's king are located Give a number.
+Here 41024 = 64 * (2 * 5 * 64 + 1), where 64 is the enumerated number of squares where the king of one's own side is located, and (2 * 5 * 64 + 1) is the enumerated number of squares where the chess pieces other than the opponent's king are located.
 
 * **The square our king is at** There is only one king of one's own side, and there are 64 grids where the king is located, so 1 x 64 = 64.
-* **The square of all other pieces except "their king"** There are 10 types of pieces on both sides in total: [black, white] x [pawns, horses, bishops, rooks, queens]. Each piece may be placed in 64 squares, so there are 2 * 5 * 64 = 640. And the +1 at the equation tail, as far as I know, is to indicate whether the last move in the game was a capture move or not. It is unclear what's its usage in chess. I think this is just a remnant when NNUE was ported from shogi to chess, and it was not used in chess.
+* **The square of all other pieces except "their king"** There are 10 types of pieces on both sides in total: [black, white] x [pawns, horses, bishops, rooks, queens]. Each piece may be placed in 64 squares, so there are 2 * 5 * 64 = 640. And the “+1” in this equation, as far as I know, is to indicate whether the last move in the game was a capture move or not. It is unclear what its usage is in chess. I suspect that this is just a remnant when NNUE was ported from shogi to chess, and it was not used in chess at all.
 
 Finally, combining the two parts, a total size of 64 x 641 = 41024 combinations can be obtained. This combination essentially reflects the piece-square relationship between the king of one side and other non-king pieces of both sides on the board. In the rest of this article, I will collectively refer to such a combination of states as a "positional relationship". 
 
@@ -196,7 +192,7 @@ Piece-square enumeration value = 0 * 641 + 3 * 64 + 63 + 1 = 256
 ![title](./img/p2-4.png)
 
 Our side is black, and the white queen is their queen, so the number of the white queen = 9
-Since our side is black, the board should be flipped. After flipping, black king sqaure number = 63, white queen square number = 0
+Since our side is black, the board should be flipped. After flipping, black king square number = 63, white queen square number = 0
 Piece-square enumeration value = 63 * 641 + 9 * 64 + 0 + 1 = 40960
 
 <!--
@@ -219,13 +215,12 @@ We need to binarize the enum values ​​in this collection.
 
 Binarization is a very common technique in feature engineering, and its fundamental purpose is to increase the linear separability of some enumeration value features, especially when the enumeration value participates in model calculation. To put it simply, a vector whose dimension is equal to all possible values ​​of the enumeration value is used to represent the value of an enumeration variable, and each dimension or subscript corresponds to an enumeration value. The initial value of the vector is all 0, and only the element on the subscript corresponding to the current value is set to 1. This is actually the "one-hot encoding" commonly used in classification problems. In NNUE, similarly, we use a 41024-dimensional binary vector to represent the chessboard state, and set the element on the subscript corresponding to the positional relationship that appears in the chessboard to 1, and set all other elements to 0. Since the chessboard representation is a set of positional relations, there is not only one 1, but the subscripts of the enumeration values ​​of positional relations appearing in each set are all set to 1.
 
-For NNUE, there are additional benefits of doing so. It is conceivable that although the dimension of this vector has a high as more than 40,000+ dimensions, it is actually quite sparse. 
+For NNUE, there are additional benefits of doing so. It is conceivable that although the dimension of this vector is as high as more than 40,000+ dimensions, it is actually quite sparse. 
 
 Because there are only thirty-two pieces on the chessboard, and each dimension is either 0 or 1. Therefore, NNUE can be stored according to the binary sparse vector method: that is, only all non-zero vector subscripts are recorded. This results in significant savings in storage and maintenance overhead. More importantly, each step can affect very few chess pieces and grids, so this sparse vector can also be updated with the execution of moves and undo increments, which further speeds up the calculation speed of the chessboard representation. As mentioned in the previous article, this is one of NNUE's innovations, which is crucial for the program to play stronger chess.
 
 
-The above is the procedure for NNUE to compute the board representation vector for singl. 
-
+The above is the procedure for NNUE to compute the board representation vector for a single side. 
 For both players, NNUE first calculates the representation vector of its own side, and then calculates the vector of the opponent. Finally, the chessboard representation vectors of the two sides are spliced ​​into a complete representation of 82048 dimensions according to the order of one's own side and the other side 's .
 
 
@@ -241,7 +236,7 @@ For both players, NNUE first calculates the representation vector of its own sid
 -->
 ### Summary
 
-In order to speed up the computation of the board representation, NNUE uses simple but high-dimensional binary vectors as the input features of the network. This makes the incremental computation and update of the board representation being possible. And it is one of the reasons why NNUE can run faster than the early generations of neural network evaluation.  Using a relatively simple and straightforward board representation is also a practice of the ​​"end-to-end learning" idea in deep learning: instead of puting huge amound of energy on the complicated feature engineering, one should integrate this task into the model itself.
+In order to speed up the computation of the board representation, NNUE uses simple but high-dimensional binary vectors as the input features of the network. This makes the incremental computation and update of the board representation being possible. And it is one of the reasons why NNUE can run faster than the early generations of neural network evaluation.  Using a relatively simple and straightforward board representation is also a practice of the ​​"end-to-end learning" idea in deep learning: instead of putting huge amounts of energy on the complicated feature engineering, one should integrate this task into the model itself.
 
 ### References
 

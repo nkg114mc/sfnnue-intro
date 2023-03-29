@@ -56,4 +56,5 @@ Thumbs.db
 .DS_Store
 .depend
 senpai
+*.iml
 
