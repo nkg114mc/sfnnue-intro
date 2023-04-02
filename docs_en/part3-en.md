@@ -130,7 +130,7 @@ Then, wx+b can be simplified as a series of vector accumulation operations: $wx+
 
 | ![3-3](./img/p3-3.png) |
 | :---: |
-| <em>The multiplication of a sparse binary vector x by w can be simplified as picking the sum of rows corresponding to the non-zero elements of x in w. Analogous to the example in NLP, if b is ignored and x is assumed to be a one hot encoding of a word, then this process is to calculate the wording embedding of x.
+| <em>The multiplication of a sparse binary vector x by w can be simplified as picking the sum of rows corresponding to the non-zero elements of x in w. Analogous to the example in NLP, if we ignore b and assume x to be the one-hot encoding of a word, then this process is to compute the word embedding of x.
 </em> |
 
 As the game is ongoing, the index set of non-zero elements of x is also incrementally changed, and the corresponding above accumulation results can also be incrementally updated.
