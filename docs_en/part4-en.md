@@ -298,8 +298,47 @@ alpha-beta搜索是存在不确定性的，即给定完全一致的输入，其�
 | ![title](./img/p4-1.png) |
 | :---: |
 | <em>添加位置策略示意图：(a) 策略一（b）策略二。箭头线代表随机着法，圆圈代表执行着法后的棋盘局面。红色为随机着法，蓝色为最佳着法。此图中random_move_count = 4</em> |
+-->
+
+### Self-play Game with Random Moves
+
+If the game generation phase mentioned above relies entirely on self-play and starts from the initial situation every time, then the problem of "game repetition" must be solved first.
+
+Alpha-beta search has uncertainty: taken the completely same inputs, search results may also be different. These uncertainties mainly come from the following three aspects:
+
+1. Since the alpha-beta search will be used in conjunction with iterative deepening, the stop condition for iterative deepening is usually time-limit-exceed. So the stopping point of each search will be different due to the slight difference of the timer, which may lead to different search results.
+2. Alpha-beta search needs to call the heuristic function to sort all legal moves of a given position. When the heuristic scores are equal for some moves, they may have the instability issue on their ranking (See “[sorting algorithm stability](https://stackoverflow.com/questions/1517793/what-is-stability-in-sorting-algorithms-and-why-is-it-important)”).
+3. In order to search efficiently, chess programs use [Transposition Table](https://www.chessprogramming.org/Transposition_Table), which is similar to a hash table that stores existing search results for traversed positions. The key of each position is computed by a set of 64-bit random integers, which are called [Zobrist keys](https://www.chessprogramming.org/Zobrist_Hashing). Most programs will generate these random Zobrist keys when they start running. It can also lead to different search results if the Zobrist key is inconsistent between runs.
+
+Among them, (3) can only happen if the program is reinitialized between two searches, which obviously does not fit the actual case of the NNUE generation algorithm. The probability of occurrence of (2) is extremely small, and only (1) is the most common cause. However, the search in the NNUE generation algorithm uses the depth-limit as the stop condition, so the uncertainty caused by time would not exist. 
+
+With all analysis above, we can conclude that: for a given position, it is highly possible that 
+the best move obtained by the search will not change among different games. So there is no difference between running one game and running a million games - those one million games would be all the same.
+In order to solve this problem, NNUE manually added `N` steps of "random moves" in each game, that is, to execute a move other than the best move at some step ("best move" is the move obtained by search), thereby increasing the diversity of the game. 
+The problem of “how to add random moves” can be decomposed into two sub-problems of "vertical" and "horizontal".
+The first is the "vertical problem": given the quota of N random moves, which steps in the game are random moves added? NNUE generator provides two strategies:
+
+#### **Adding Step Selection Strategy 1: Continuous Moves from Initial Position**
+
+This strategy is the simplest, that is, starting from the initial situation, the two sides make a total of N steps of random moves, and then formally start the self-play game without random moves. It is equivalent to the two sides randomly generating an opening, and then proceeding to play the game normally along this opening.
+
+#### **Adding Step Selection Strategy 2: Discontinuous Moves Given Min-ply and Max-ply**
+
+This strategy does not require random moves to be continuous. Instead, random move can appear anywhere within a range. The so-called `min-ply` and `max-ply` are the earliest and latest steps that allow random moves. For example, `min-ply` = 1, `max-ply` = 24 means to choose `N` steps between the 1st and 24th steps to perform random moves.
+
+Here are the relevant parameters that controls these strategies:
+
+* **random_move_count**, int: it is the `N` in the "N random moves" mentioned above, the default value = 5.
+* **random_move_minply**, int: `min-ply` in strategy two, default value = 1 (note that the index of steps here starts from 0, so 1 is actually the second step). If  random_move_minply is set to -1, it means that NNUE has chosen strategy one.
+* **random_move_maxply**, int: `max-ply` in strategy two, default = 24. If strategy one is selected, this parameter will be ignored.
+
+| ![title](./img/p4-1.png) |
+| :---: |
+| <em>Diagram of adding location strategy: (a) strategy one (b) strategy two. Arrowed lines represent random moves, and circles represent the position after executing the moves. The red arrows are random moves, and blue ones are the best moves. In this diagram, `random_move_count` = 4.</em> |
 
 
+
+<!--
 其次是“横向问题”，即假定某一步我们决定走“随机着法”，应该在所有合法着法中选择哪一个着法作为“随机着法”呢？对此，NNUE也同样提供了三类策略：
 
 #### **随机着法选择策略一：Pure Random Move like Apery**
@@ -331,93 +370,40 @@ Multi-PV中所谓“最好”、“次好”、“第三好”无非就是将每
 | <em>随机着法选取策略示意图：（a）策略一、二（b）策略三。虚线箭头线代表备选着法，圆圈代表执行着法后的棋盘局面。Multi-PV部分，灰色越深的着法分数越高，和最佳着法分数差越小</em> |
 -->
 
+The second is the "horizontal problem", that is, assuming that we decide to take a "random move" at a certain step, which move should we choose as a "random move" among all legal moves? In this aspect, NNUE also provides three types of strategies:
 
-### Self-play game with random moves
+#### **Random Move Selection Strategy 1: Pure Random Move like Apery**
 
-If the game generation phase mentioned above relies entirely on self-play and starts from the initial situation every time, then the problem of "game repetition" must be solved first.
+This strategy is the simplest and most brute-force: directly selecting one from all moves other than the best one at random. The original meaning of "Apery" is "to imitate", and it is a relatively crude imitation. I guess the author uses it to describe this purely brainless random strategy?
 
-Alpha-beta search is uncertain, that is, given completely consistent input, its search results may also be different. These uncertainties mainly come from the following three aspects:
+#### **Random Move Selection Strategy 2: Pure Random Move unlike Apery**
 
-1. Since the alpha-beta search will be used in conjunction with iterative deepening, the stop condition for iterative deepening search is often time exhaustion. So the stopping point of each search will be different due to the slight difference of the timer, which may lead to different search results.
-1. Alpha-beta search needs to call the heuristic algorithm to pre-sort all the moves of a certain position. The heuristic scores of some moves may be equal, which leads to the instability problem of ranking.
-1. In order to search quickly, chess programs use Tranposition Table , which is similar to a hash table. The key of each situation is calculated by some 64-bit random integers, which are called Zobrist keys . Most programs will randomly generate this Zobrist key when they start running. It can also lead to different search results if the Zobrist key is inconsistent between runs.
+Similar to strategy 1, the only difference is that when there is a king move among all legal moves, it will only randomly select among the king moves. Otherwise, follow strategy 1.
+(I personally do not fully understand the purpose for specially taking care of the king moves, probably to avoid some stupid random moves when the king is under check or in danger)
 
-Among them, (3) can only happen if the program is reinitialized between two searches, which is obviously not in line with the actual situation of the NNUE generation algorithm. (2) The probability of occurrence is extremely small, and only (1) is the most common. However, the search in the NNUE generation algorithm uses the layer depth as the stop condition, so the uncertain factor of time does not exist. In this way, there is a very high probability, and the best move obtained by each step of the search will not change, so there is no difference between running one game and running a million games-the total number of one million games is long. Same. In order to solve this problem, NNUE artificially added N-step "random moves" in each game, that is, to execute a move other than the best move at a certain step ("best move" is to search obtained moves), thereby increasing the diversity of the game. The problem of how to add "random moves" can be decomposed into two sub-problems of "vertical" and "horizontal".
+#### **Random Move Selection Strategy 3: Random Multi-PV Move**
 
-The first is the "vertical problem": given the quota of N random moves, which steps in the game are random moves added? NNUE generator provides two strategies:
+Multi-PV is actually an incidental function of alpha-beta search. “PV” is the abbreviation of “Principal Variation”. It is the best move sequence obtained by the alpha-beta search, which is also what alpha-beta search believes that the moves should be taken for the next few steps. 
+Usually for a position, it is enough for the search to return only the best move and the corresponding PV. But in some cases, we want the search to return more than one best move. For example, when we analyze a given position, we hope to return the top three best moves, sorted from best to worst, this is the right moment of applying Multi-PV technology.
+(see here for the introduction of [PV](https://www.chessprogramming.org/Principal_Variation) and [Multi-PV](https://talkchess.com/forum3/viewtopic.php?t=70126)).
 
-Add position strategy 1: Continuous Moves from Initial Position
+The so-called "best", "second best", and "third best" in Multi-PV are nothing more than conducting a full-window alpha-beta search for each move to obtain the score of the move, and then sort the moves by their score in the descent ordering, and then take the top-k. In addition, NNUE also uses a margin to do some filtering: any move with a score difference greater than the margin from the best move will not be considered. For example, if the best move is 100 score, margin=30, then all moves with less than 70 score will not be considered. This eliminates the case of having to include some too-bad moves even though their rankings are higher than `k`th.
 
-This strategy is the simplest, that is, starting from the initial situation, the two sides take a total of N steps of random moves, and then officially start the self-play game without random moves. It is equivalent to the two sides randomly generating an opening, and then proceeding to play the game normally along the second opening.
-
-Add location strategy 2: Discontinuous Moves Given Min-ply and Max-ply
-
-This strategy does not require random moves to be continuous, but can appear anywhere within a set range. The so-called min-ply and max-ply are the earliest and latest steps that allow random moves. For example, min-ply = 1, max-ply = 24 means to choose N steps between the 1st and 24th steps to perform random moves.
-
-Here are the relevant parameters that control which strategy NNUE uses:
-
-random_move_count , int: It is the N in the "N random moves" mentioned above, the default value = 5.
-random_move_minply , int: min-ply in strategy 2, default value = 1 (note that the number of steps here starts from 0, so 1 is actually the second step). If random_move_minply is set to -1, it means that NNUE has chosen strategy one.
-random_move_maxply , int: max-ply in strategy 2, default = 24. If strategy one is selected, this parameter will be ignored.
-title
-Schematic diagram of adding location strategy: (a) strategy one (b) strategy two. Arrowed lines represent random moves, and circles represent the board position after executing the moves. Red is a random move, blue is the best move. random_move_count = 4 in this graph
-The second is the "horizontal problem", that is, assuming that we decide to take a "random move" at a certain step, which move should we choose as a "random move" among all legal moves? In this regard, NNUE also provides three types of strategies:
-
-Random move selection strategy 1: Pure Random Move like Apery
-This strategy is the simplest and most violent, directly selecting one of all moves except the best one at random. The original meaning of "Apery" is "to imitate", and it is a relatively crude imitation. I guess the author uses it to describe this purely brainless random strategy.
-
-Random move selection strategy 2: Pure Random Move unlike Apery
-Similar to strategy 1, the only difference is that when there is a move of the king among the legal moves, it is only randomly selected among these "moves of the king". Otherwise, follow policy one. I personally don't quite understand the purpose of this special care for the king's moves.
-
-Random move selection strategy 3: Random Multi-PV Move
-Multi-PV is actually an incidental function of alpha-beta search. PV is the abbreviation of Principal Variation (generally translated as "main variation" in Chinese, but this translation feels more confusing), in fact, it is the best move sequence obtained by alpha-beta search, which is what alpha-beta search thinks, then The moves that should be taken for the next few steps. Generally for a situation, it is enough for the search to return only the best move and the corresponding PV. But in some cases, we want the search to return more than one best move—for example, when we analyze a certain situation, we hope to return the top three best moves, sorted from best to worst, which is to apply Multi -PV place ( see here for the introduction of PV and Multi-PV ).
-
-The so-called "best", "second best", and "third best" in Multi-PV are nothing more than conducting a full-window alpha-beta search for each move to obtain the score of the move, and then according to the score from large to small Sort, and then take the top-k. In addition, NNUE also uses a margin to filter: any move with a score difference greater than the margin from the best move will not be considered. For example, if the best move is 100 points, margin=30, then all moves with less than 70 points will not be considered. This eliminates the possibility of having to include some too bad moves when the candidate moves are less than k.
-
-It can be seen that the first two strategies make purely random choices among all legal moves like rolling dice, without considering the quality of this move at all. Although this approach greatly increases the diversity of the game, it also has a chance to introduce some outrageously stupid moves, so that they hardly appear in rational games. This not only may waste resources in subsequent training in these uncommon situations, but also reduces the credibility of game_result. In contrast, the current strategy takes the quality of the move into account: "We'll pick a move at random, but still randomly pick one of the best top few moves", which is better than randomly picking a move out of all the moves. Much more reliable. However, the price is that the diversity of generated games is limited. After all, Multi-PV moves are only a small part of all legal moves, and the search for returning Mult-PV requires additional time overhead.
+We can see that the first two strategies make purely random choices among all legal moves like rolling dice, without considering the quality of these moves at all. Although this approach greatly increases the diversity of the game, it also has a chance to introduce some outrageously stupid moves that would hardly appear in rational or real games. 
+This would not only mislead the training on those uncommon moves and positions, but also reduces the credibility of `game_result`. 
+In contrast, the current strategy takes the quality of the move into account: "we'll pick a move at random, but still randomly pick one of the best top few moves", which is better and more reliable than randomly picking a move out of all the moves. However, the price is that the diversity of generated games is limited. After all, Multi-PV moves are only a small proportion of all legal moves, and the search for returning Mult-PV would require additional time consumption.
 
 The following are the relevant parameters that control the NNUE random move selection strategy:
 
-random_multi_pv , int: the number of Multi-PV, that is, k in the top-k best moves that the search wants to consider. Note that the top-k here is only the first step, and the next step is to remove the gap between each move and the best move according to the score difference. If the parameter is 0, strategy 1 or strategy 2 will be adopted; only when the parameter is greater than 0, strategy 3 will be adopted.
-random_multi_pv_diff , int: The maximum score difference between the alternative Multi-PV move and the best move, which is the margin mentioned above.
-random_multi_pv_depth , int: Depth to use for Multi-PV search. The depth can be different from the depth of the standard search, because the same depth of Multi-PV search is more time-consuming, so it is also possible to reduce the depth appropriately to speed up.
-random_move_like_apery , int: Whether to use the Apery method to distinguish strategy 1 from strategy 2. When this parameter is set to 0, strategy 2 is used, otherwise strategy 1 is used. This parameter is only valid when random_multi_pv = 0.
+* **random_multi_pv**, int: the number of Multi-PV, or the `k` in the “top-k best moves” that the search wants to consider. Note that taking top-k best moves is only the first step, and the next step is to get rid of the moves that are “too bad” (the moves whose difference between its score and the best move’s score are too large). If the parameter is 0, strategy 1 or strategy 2 will be adopted; only when the parameter is greater than 0, strategy 3 will be adopted.
+* **random_multi_pv_diff**, int: the maximum score difference between the alternative Multi-PV move and the best move, which is the margin mentioned above.
+* **random_multi_pv_depth**, int: search `depth` for Multi-PV search. This depth can be different from the `depth` of the standard search, because the same depth of Multi-PV search is more time-consuming, so reducing the search depth could some speed up on data generation (because here we only approximately need a “not-too-bad” random move rather an accurate best move).
+* **random_move_like_apery**, int: whether to use the “Apery” method to distinguish strategy 1 from strategy 2. When this parameter is set to 0, strategy 2 is used, otherwise strategy 1 is used. This parameter is only valid when `random_multi_pv` = 0.
 
 
 | ![title](./img/p4-2.png) |
 | :---: |
-| <em>Schematic diagram of random move selection strategy: (a) Strategy 1 and 2 (b) Strategy 3. The dotted arrow lines represent alternative moves, and the circles represent the board position after executing the move. In the Multi-PV section, the darker the gray, the higher the score of the move, and the smaller the difference between the score and the best move</em> |
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+| <em>Diagram of random move selection strategy: (a) Strategy 1 and 2 (b) Strategy 3. The dotted arrow lines represent alternative moves, and the circles represent the chess position after executing the move. In the Multi-PV section, the darker the gray, the higher the score of the move, and therefore the closer to the best move.</em> |
 
 
 
