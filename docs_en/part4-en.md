@@ -401,7 +401,7 @@ The following are the relevant parameters that control the NNUE random move sele
 * **random_move_like_apery**, int: whether to use the “Apery” method to distinguish strategy 1 from strategy 2. When this parameter is set to 0, strategy 2 is used, otherwise strategy 1 is used. This parameter is only valid when `random_multi_pv` = 0.
 
 
-| ![title](./img/p4-2.png) |
+| ![title](./img/p4-2-en.png) |
 | :---: |
 | <em>Diagram of random move selection strategy: (a) Strategy 1 and 2 (b) Strategy 3. The dotted arrow lines represent alternative moves, and the circles represent the chess position after executing the move. In the Multi-PV section, the darker the gray, the higher the score of the move, and therefore the closer to the best move.</em> |
 
