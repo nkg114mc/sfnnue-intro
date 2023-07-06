@@ -40,7 +40,7 @@ ScaledClippedReLu(x, lowerbound, upperbound, denominator)
 
 Since we need to limit the computation time of forward propagation, the network architecture of NNUE can not be super complicated. It is a typical fully connected neural network (FCN) with only four layers in total. Among them, the number of parameters in the first layer (input layer) is much larger than the following three layers, which is showing a shape of "big-head-small-body". The figure below is the network architecture diagram of HalfKP_256X2_32_32 by Nodchip.
 
-| ![p3-1](./img/p3-1.png) |
+| ![pic3-1](./img/p3-1.png) |
 | :---: |
 | <em>Diagram of HalfKP_256X2_32_32 network architecture created by Nodchip.</em> |
 
@@ -119,7 +119,7 @@ In fact, this transformation needs to be taken on the board representation vecto
 
 Note that the parameters used to compute y1 and y2 above are the same. But since there are two inputs, we get two outputs as well: y1 and y2, each with 256 dimensions. After concatenating these two outputs together in order, a 512-dimensional output y is obtained.
 
-| ![3-2](./img/p3-2-en.png) |
+| ![pic3-2](./img/p3-2-en.png) |
 | :---: |
 | <em>Diagram of FeatureTransformer part network achitecture</em> |
 
@@ -128,7 +128,7 @@ The above layers are for the convenience of describing only. In fact, the output
 As mentioned in the previous article, the board representation x of any side is a binary sparse vector, and its index set of non-zero elements $A = \{i_1, i_2, ..., i_k\}$. We assume that x is a 41024-dimensional row vector, then correspondingly, b in AfflineTransformer is also a 256-dimensional row vector, and the shape of w is 41024 x 256. If we view w in the row-major perspective, w can be seen as a vector array consisting of 41024 256-dimensional row vectors, where the $i$th row vector can be denoted by $w_i$. 
 Then, wx+b can be simplified as a series of vector accumulation operations: $wx+b = \sum^k_{j}w_{i_j} + b$, where $i_j \in A$. This process is very similar to the process when we use the word embedding matrix to compute the embedding of a sentence (assuming that the sentence encoding is obtained by adding the one-hot encoding of all the non-repetitive words it contains) in NLP.
 
-| ![3-3](./img/p3-3.png) |
+| ![pic3-3](./img/p3-3.png) |
 | :---: |
 | <em>The multiplication of a sparse binary vector x by w can be simplified as picking the sum of rows corresponding to the non-zero elements of x in w. Analogous to the example in NLP, if we ignore b and assume x to be the one-hot encoding of a word, then this process is to compute the word embedding of x.
 </em> |
@@ -165,13 +165,13 @@ Technically, Network is not a class in Nodchip's code. NNUE stores the fully con
 
 AfflineTransformer(x, 512, 32, int8) -> ScaledClippedReLu(x, 0, 127, 64) -> AfflineTransformer(x, 32, 32, int8) -> ScaledClippedReLu(x, 0, 127, 64) -> AfflineTransformer( x, 32, 1, int8)
 
-| ![p3-4](./img/p3-4-en.png) |
+| ![pic3-4](./img/p3-4-en.png) |
 | :---: |
 | <em>Diagram of the architecture of the Network part</em> |
 
 Similar to FeatureTransformer, matrix multiplication in the Network part can also be implemented with fast vector operations. However, the input vector here is no longer a binary sparse vector, so it is necessary to actually compute the dot-product of the input row vector and the column vector of w, and then do the sum. The part of the dot-product can also be optimized by CPU instructions. Fortunately, the network size of this part is much smaller than the input layer, and the computation of the dense matrix will not take too much extra time.
 
-![p3-5](./img/p3-5.png)
+![pic3-5](./img/p3-5.png)
 
 
 
@@ -284,7 +284,7 @@ On the contrary, in the Network part, since all w matrices are dense matrices, m
 As a result, the operands that need to be loaded in blocks now become column vectors, which makes w to be stored in the column-major order in memory.
 All of these are designed for the CPU vector instructions to conveniently load operands from memory.
 
-| ![title](./img/p3-6.png) |
+| ![pic3-6](./img/p3-6.png) |
 | :---: |
 | <em>$w$ matrix flattening orders: (a) "row-major" order applied in FeatureTransformer, (b) "column-major" order applied in other layers.</em> |
 

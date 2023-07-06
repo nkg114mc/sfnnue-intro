@@ -82,7 +82,7 @@ Since both black and white are possible to be "our side", the representation of 
 
 For example, the way the pawn moves, the white side advances from the 2nd row to the 8th row, while the black side is just the opposite, advancing from the 7th row to the 1st row. If we number the grids on the chessboard from A1 to H8 respectively from 0 to 63, then the meanings of the black pawns and white pawns on the 8th grid (A2) are completely different: the black pawns can be upgraded by only one step. , poses a huge threat to White, and the White pawn in this position is probably not out of the house yet.
 
-| ![title](./img/p2-1.png) |
+| ![pic2-1](./img/p2-1.png) |
 | :---: |
 | <em>The starting position of chess. See the queen and king in the yellow box: the king is on the right half of the board and the queen is on the left half, no matter black or white. Therefore, chess board is not left-right symmetrical.</em> |
 
@@ -224,7 +224,7 @@ The above is the procedure for NNUE to compute the board representation vector f
 For both players, NNUE first calculates the representation vector of its own side, and then calculates the vector of the opponent. Finally, the chessboard representation vectors of the two sides are spliced ​​into a complete representation of 82048 dimensions according to the order of one's own side and the other side 's .
 
 
-![title](./img/p2-5-en.png)
+![pic2-5](./img/p2-5-en.png)
 
 
 <!--
