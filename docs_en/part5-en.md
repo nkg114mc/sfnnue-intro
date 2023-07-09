@@ -196,4 +196,167 @@ But in this way, “generating offline training data” becomes a joke - since t
 | :---: |
 | <em>The green box is the training data generation module, the blue box is the network training module, and the arrow indicates the dependency. Imagine if the gray arrow in the figure turns into a solid line, what is the point of distinguishing between the green box and the blue box?</em> |
 
+
+
+
+
+<!--
+### Loss Functions
+
+Nodchip原版的learner中实现了至少四种loss。如果初次阅读loss定义部分的代码，可能会被各种编译器预处理开关给转晕了。比如你会看到至少四个不同的编译开关变量：
+
+* *LOSS_FUNCTION_IS_**CROSS_ENTOROPY_FOR_VALUE***
+* *LOSS_FUNCTION_IS_**WINNING_PERCENTAGE***
+* *LOSS_FUNCTION_IS_**CROSS_ENTOROPY***
+* *LOSS_FUNCTION_IS_**ELMO_METHOD***
+
+每一个开关变量对应一种loss。作者在最终版本中采用的是最后一个：**ELMO_METHOD**。我会对每一个都简要介绍一下，不过最后你会发现这四个loss说的其实是一码事。先介绍几个代码中可能会看到的名词。
+-->
+
+### Loss Functions
+
+There are four different losses implemented in Nodchip's learner.
+If you read the code relevant to the loss definition for the first time, you might be confused by various compiler preprocessing switches. For example, you will see at least four different compile switch variables:
+
+* *LOSS_FUNCTION_IS_**CROSS_ENTOROPY_FOR_VALUE***
+* *LOSS_FUNCTION_IS_**WINNING_PERCENTAGE***
+* *LOSS_FUNCTION_IS_**CROSS_ENTOROPY***
+* *LOSS_FUNCTION_IS_**ELMO_METHOD***
+
+Each switch variable above corresponds to a specific loss. Nodchip applied the last one in the final version: **ELMO_METHOD**. I'll give a brief introduction to each of the four, but in the end you'll find that these four losses actually mean the same thing. 
+
+First, let me introduce a few terminologies that might be seen in the code.
+
+
+<!--
+### deep value 与 shallow value
+
+在Nodchip版的训练器代码中，label值被叫做“deep value”，预测值被叫做“shallow value”。deep value是从训练集中直接读取的，也就是每个训练样本中的score部分（参考上一篇中的PackedSfenValue结构体）。之所以叫“deep value”，顾名思义，是因为这个值是Stockfish使用原版估值函数调用alpha-beta搜索若干层后返回的值，也就是“经过一定深度的搜索得到值”。相应的，“shallow value”就是直接通过网络向前传播得到的估值，或者以网络为估值函数进行一次安静搜索得到的值，总之就是在不调用alpha-beta搜索时得到的值。
+
+正如前文提到的，我们一般认为，经过搜索返回的的估值往往比直接调用估值函数得到估值更加准确。基于此假设，训练的目标也就一目了然了：我们希望NNUE网络输出的估值与使用原版估值函数经过若干层搜索后返回的估值一样准确，也就是希望shallow value与deep value尽可能的接近。
+
+| ![title](./img/p5-3.png) |
+| :---: |
+| <em>shallow value与deep value示意图。左侧为shallow value：在输入局面上直接调用估值函数获得；右侧为deep value：以输入局面为根节点调用一次d层（这里d = 10）的alpha-beta搜素获得</em> |
+-->
+
+### "Deep Value" and "Shallow Value"
+
+In the Nodchip's version of the trainer code, the label value is called "deep value", and the predicted value is called "shallow value". The deep value is read directly from the training set, that is, the `score` field of each training example (see the `PackedSfenValue` struct in the previous article). 
+The reason why it is called "deep value", as the name suggests, is because this value is "the value obtained after a certain depth of search". 
+Remember that in the data generation phase, for each position we let Stockfish run a `d`-depth alpha-beta search using its original evaluation function and store the returned score.
+Respectively, "shallow value" is the evaluation obtained by directly propagating forward through the network (or more accurately: the value obtained by performing a quiescence search with the network as the evaluation function). It is the value obtained when the alpha-beta search is not called.
+
+As mentioned above, we believe that, generally, the evaluation returned by the search is usually more accurate than the evaluation obtained by directly calling the evaluation function/network. Based on this assumption, the goal of the training is clear: we hope that the evaluation output by the NNUE network is as accurate as the score returned by `D`-depth search using the original evaluation function. In other words, we hope that the shallow value and the deep value could be as close as possible.
+
+| ![pic5-3](./img/p5-3.png) |
+| :---: |
+| <em>Diagram of "shallow value" and "deep value". Shallow value on the left: obtained by directly calling the evaluation function on the input position; deep value on the right: obtained by calling an alpha-beta search of depth `d` (here `d` = 10) with the input position as the root node</em> |
+
+
+<!--
+### winning_percentage函数
+
+这是一个将估值转化为当前行棋方取胜概率的函数（公式）。这个看上去挺复杂的公式是源于一项2007年的研究成果[^1]，感兴趣的话可以去它的[wiki页面](https://www.chessprogramming.org/Pawn_Advantage,_Win_Percentage,_and_Elo)了解一下。大概就是拟合了一下估值和最终胜负结果之间的数值关系。原始的公式如下：
+
+$$W(P)=\frac{1}{1+10^{-P/4}}$$
+
+其中W指取胜概率，P是经过“兵值归一化”之后的估值。所谓“兵值归一化”是指按照兵的子力价值是1.0的标准对原始估值进行缩放。比如，假设你的估值是350，你的兵的“子力价值”是100，那么P = 350 / 100 = 3.5。（[具体可以参考这里](https://www.chessprogramming.org/Point_Value)）
+
+进一步的，作者通过换底公式把原函数中的底数10换成了e，这样W(P)就有了类似sigmoid函数的形式（不太清楚为什么转换为sigmoid形式，猜测可能是求导方便？）：
+
+$$
+\begin{align}
+W(P) &= \frac{1}{1+10^{−P/4}} \nonumber\\
+     &= \frac{1}{1+\exp(−P/4*\log(10))} \nonumber\\
+     &= sigmoid(P/4*\log(10)) \nonumber
+\end{align}
+$$
+
+在此基础上，再把"兵值归一化"的计算过程 P = value / PawnValueEg 代入，于是得到了最终形式：
+```
+winning_percentage(value) = sigmoid(value / PawnValueEg / 4.0 * log(10.0))
+```
+其中value是未经归一化的估值，PawnValueEg指Stockfish的残局兵的子力价值。
+-->
+
+### `winning_percentage()` Function
+
+This is a function (formula) that converts an evaluation score into the winning probability for the current side-to-move player. 
+It is derived from a research in 2007[^1].
+This research explores the approximate relations between Win Percentage, Pawn Advantage, etc.
+If you are interested, please go to this [wiki page](https://www.chessprogramming.org/Pawn_Advantage,_Win_Percentage,_and_Elo) to learn more about it.
+The original formula is as follow:
+
+$$W(P)=\frac{1}{1+10^{-P/4}}$$
+
+where `W` denotes the probability of winning, and `P` is the evaluation score after "[centipawn](https://www.chessprogramming.org/Centipawns) normalization". The "centipawn normalization" scales the original evaluation so that the material value of each pawn is exactly 1.0.
+For example, if your evaluation is 350 and your pawn material value is 100, then P = 350 / 100 = 3.5. For more details, please see [this page](https://www.chessprogramming.org/Point_Value).
+
+Furthermore, the author replaced the base 10 in the original function with e, so that `W(P)` has a similar form to the sigmoid function (I am not clear why Nodchip did this conversion. Probably because it is more convenient to compute gradient with sigmoid function?):
+
+$$
+\begin{align}
+W(P) &= \frac{1}{1+10^{−P/4}} \nonumber\\
+     &= \frac{1}{1+\exp(−P/4*\log(10))} \nonumber\\
+     &= sigmoid(P/4*\log(10)) \nonumber
+\end{align}
+$$
+
+Based on this, we can then plugin the "centipawn normalization" expression `P(value) = value / PawnValueEg` to obtain the final form:
+```
+winning_percentage(value) = sigmoid(value / PawnValueEg / 4.0 * log(10.0))
+```
+In this final form, `value` is the input unnormalized evaluation, and `PawnValueEg` the pawn material value of Stockfish in endgames (most engines would give different piece material values in midgames and endgames).
+
+
+<!--
+### MSE Loss 与 Cross-Entropy Loss
+
+Nodchip的代码中用到了两种基础loss：
+
+1. **Mean Square Error**: $L_{MSE}(Y,\hat{Y})=\frac{1}{n}\sum_{i}^{n}(y_i-\hat{y_i})^2\displaystyle$
+1. **Cross-Entropy**: $L_{CE}(Y,\hat{Y})=-\frac{1}{n}\sum_{i}^{n}\left[ y_i\log(\hat{y_i}) + (1-y_i)\log(1-\hat{y_i}) \right]\displaystyle$
+
+其中，MSE Loss的输入值域可以是任意范围，而Cross Entropy Loss的输入必须是概率，也就是输入值域必须为[0, 1]。
+-->
+
+### MSE Loss and Cross-Entropy Loss
+
+There are two basic losses used in Nodchip's code:
+
+1. **Mean Square Error**: $L_{MSE}(Y,\hat{Y})=\frac{1}{n}\sum_{i}^{n}(y_i-\hat{y_i})^2\displaystyle$
+1. **Cross-Entropy**: $L_{CE}(Y,\hat{Y})=-\frac{1}{n}\sum_{i}^{n}\left[ y_i\log(\hat{y_i}) + (1-y_i)\log(1-\hat{y_i}) \right]\displaystyle$
+
+Among them, the input value of MSE Loss could be in any range, and the input of Cross Entropy Loss must be probability, which means that the input value range must be [0, 1].
+
+
+<!--
+### p、q、t、m变量
+
+这四个变量在NNUE计算loss的代码中会经常见到（虽然名字可能是随便起的），他们其实都是标准化为概率后的结果，这里简要介绍一下：
+
+* **p**：即 winning_percentage(deep_value)。
+* **q**：即 winning_percentage(shallow_value)
+* **t**：即标准化为概率的game_result。从PackedSfenValue中读取的game_result的值域为{-1, 0, +1}，-1表示己方输，+1表示己方赢，0表示和棋。通过t = (game_result + 1) / 2，就将game_result转化为了概率。
+* **m**：即p和t的加权平均。二者各自的权重由参数lambda控制：**m = lambda * p + (1 - lambda) * t**，lambda $\in [0,1]$。
+
+简单总结就是：q是预测值，p和t是两种标签值，而m是两种标签的综合（加权平均）。权重lambda作为学习参数需要在训练开始前指定（默认1.0，也就是不使用game_result）。前文我们曾提到，NNUE使用对局结果对训练估值进行了校正，而此处的加权平均m正是实现这种“校正”的方法。
+-->
+
+### `p`, `q`, `t` and `m` Variables
+
+These four variables are often seen in NNUE's code for computing loss (although the names were probably given randomly). They are actually the probabilities after normalization. Here is a brief introduction to each of them:
+
+* **p**: output of `winning_percentage(deep_value)`
+* **q**: output of `winning_percentage(shallow_value)`
+* **t**: the game_result normalized to probability. The value range of game_result read from PackedSfenValue is {-1, 0, +1}, -1 means that one's side loses, +1 means that one's own side wins, and 0 means a draw. By t = (game_result + 1) / 2, the game_result is converted into a probability.
+* **m**: the weighted average of p and t. The respective weights of the two are controlled by the parameter lambda: `m = lambda * p + (1 - lambda) * t`，lambda $\in [0,1]$。
+
+A brief summary is: `q` is the predicted value, `p` and `t` are the two label values, and `m` is the combination (weighted average) of the two labels. 
+The weight `lambda` needs to be specified as a learning parameter before training starts (the default is 1.0, that is, `game_result` is not used). We once mentioned that NNUE uses game results to  the training evaluation, and the weighted average `m` here is for implementing this "correction".
+
+
+
+
 ## (To be continued...)
