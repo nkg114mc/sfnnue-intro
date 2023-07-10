@@ -284,16 +284,16 @@ winning_percentage(value) = sigmoid(value / PawnValueEg / 4.0 * log(10.0))
 
 This is a function (formula) that converts an evaluation score into the winning probability for the current side-to-move player. 
 It is derived from a research in 2007[^1].
-This research explores the approximate relations between Win Percentage, Pawn Advantage, etc.
+This research explores the approximate relations between win percentage, pawn advantage, and ELO rating advantage for computer chess.
 If you are interested, please go to this [wiki page](https://www.chessprogramming.org/Pawn_Advantage,_Win_Percentage,_and_Elo) to learn more about it.
 The original formula is as follow:
 
 $$W(P)=\frac{1}{1+10^{-P/4}}$$
 
-where `W` denotes the probability of winning, and `P` is the evaluation score after "[centipawn](https://www.chessprogramming.org/Centipawns) normalization". The "centipawn normalization" scales the original evaluation so that the material value of each pawn is exactly 1.0.
+where `W` denotes the probability of winning, and `P` is the evaluation score after "[centipawn](https://www.chessprogramming.org/Centipawns) normalization". Centipawn normalization scales the original evaluation so that the material value of each pawn is exactly 1.0.
 For example, if your evaluation is 350 and your pawn material value is 100, then P = 350 / 100 = 3.5. For more details, please see [this page](https://www.chessprogramming.org/Point_Value).
 
-Furthermore, the author replaced the base 10 in the original function with e, so that `W(P)` has a similar form to the sigmoid function (I am not clear why Nodchip did this conversion. Probably because it is more convenient to compute gradient with sigmoid function?):
+Furthermore, the author replaced the base $10$ in the original function with $e$, so that `W(P)` has a similar form to the sigmoid function (I am not clear why Nodchip did this conversion. Probably because it is more convenient to compute gradient with sigmoid function?):
 
 $$
 \begin{align}
@@ -350,10 +350,10 @@ These four variables are often seen in NNUE's code for computing loss (although 
 
 * **p**: output of `winning_percentage(deep_value)`
 * **q**: output of `winning_percentage(shallow_value)`
-* **t**: the game_result normalized to probability. The value range of game_result read from PackedSfenValue is {-1, 0, +1}, -1 means that one's side loses, +1 means that one's own side wins, and 0 means a draw. By t = (game_result + 1) / 2, the game_result is converted into a probability.
-* **m**: the weighted average of p and t. The respective weights of the two are controlled by the parameter lambda: `m = lambda * p + (1 - lambda) * t`，lambda $\in [0,1]$。
+* **t**: the game_result normalized to probability. The value range of game_result read from PackedSfenValue is $\{-1, 0, +1\}$, -1 means that one's side loses, +1 means that one's own side wins, and 0 means a draw. By `t = (game_result + 1) / 2`, the game_result is converted into a probability.
+* **m**: the weighted average of `p` and `t`. The respective weights of the two are controlled by the parameter lambda: `m = lambda * p + (1 - lambda) * t`，lambda $\in [0,1]$。
 
-A brief summary is: `q` is the predicted value, `p` and `t` are the two label values, and `m` is the combination (weighted average) of the two labels. 
+A brief summary: `q` is the predicted value, `p` and `t` are the two label values, and `m` is the combination (weighted average) of the two labels. 
 The weight `lambda` needs to be specified as a learning parameter before training starts (the default is 1.0, that is, `game_result` is not used). We once mentioned that NNUE uses game results to  the training evaluation, and the weighted average `m` here is for implementing this "correction".
 
 
