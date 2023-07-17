@@ -359,4 +359,131 @@ The weight `lambda` needs to be specified as a learning parameter before trainin
 
 
 
+<!--
+### 四种loss与他们的演进关系的猜测
+
+有了以上这些名词解释，我们就可以用以下表格总结出四种loss的不同之处：
+
+| **Loss名称** | **基础loss** | **标签值** | **预测值** |
+| :--     | :--     | :--   | :--  |
+| **CROSS_ENTOROPY_FOR_VALUE** | Mean Square Error | deep_value | shallow_value |
+| **WINNING_PERCENTAGE**       | Mean Square Error | p | q |
+| **CROSS_ENTOROPY**           | Cross-Entropy     | p | q |
+| **ELMO_METHOD**              | Cross-Entropy     | m | q |
+
+那么作者为毛要搞四种不同的loss呢？在我看来，这四个loss的变化和演进无意中揭示了作者对loss不断改进的过程。我们不妨大胆猜测一下Nodchip在设计loss时的思路历程：
+
+1. 首先是作者使用了最为简单的MSE，将NNUE的学习问题直截了当的形式化为经典的回归问题，其中predict值就上面提到的shallow_value，label值就是deep_value，于是就得到了第一个CROSS_ENTOROPY_FOR_VALUE（虽然这个名字可能是后来加上的）；
+1. 后来作者开始考虑把game_result也加到目标值当中去。然而，deep_value和game_result这两个目标值的值域根本不一致。game_result的值域是{-1, +1}，deep_value或shadow_value是[-32000, +32000]。于是作者使用了一个归一化函数winning_percentage()，利用放缩外加一个sigmoid函数将所有的估值都转换为了“取胜概率”。这样两种label的值域就都是[0, 1]了。为了测试一下这个loss好不好用，作者没有一上来就引入game_result，而是仍然使用概率归一化后的deep_value与shallow_value（也就是p、q）作为loss输入，于是就得到了第二个loss WINNING_PERCENTAGE；
+1. 接着，在求导的过程中作者发现，因为在winning_percentage中引入了一个sigmoid函数，那么相应的MSE loss的导数总是挂着一个蛋疼的dsigmoid函数（sigmoid的导函数），颇为丑陋。于是作者想到了sigmoid或者softmax的好基友Cross-Entropy函数：二者配合使用时，在求导过程中，前者的$\exp()$和后者的$\log()$会相互抵消，最终得到一个和MSE导数一致的减法形式的导数。于是作者把MSE改成Cross-Entropy，这就是第三个loss CROSS_ENTOROPY；
+1. 最后，作者在这个基础上引入了game_result，将归一化之后的deep_value和game_result（也就是p和t）的加权平均作为label（也就是m）代入cross_entropy，就得到了最终的ELMO_METHOD。
+
+所以，看似是四种loss，其实说的都是一码事：都是对标准回归问题的loss的基于不同动机的改进。
+-->
+
+### The Evolution of four Losses
+
+With all terminologies introduced above, we can use the following table to summarize the differences between the four losses:
+
+| Loss Name | Base Loss | Label Value | Predict Value |
+| :--     | :--     | :--   | :--  |
+| **CROSS_ENTOROPY_FOR_VALUE** | Mean Square Error | deep_value | shallow_value |
+| **WINNING_PERCENTAGE**       | Mean Square Error | p | q |
+| **CROSS_ENTOROPY**           | Cross-Entropy     | p | q |
+| **ELMO_METHOD**              | Cross-Entropy     | m | q |
+
+
+So why does the author want to introduce four different losses? What's the motivation of doing so? 
+In my opinion, the changes and evolution of these four losses inadvertently reveal the author's process of continuously improving the losses. 
+We might make a reasonable guess about Nodchip's idea when designing loss:
+
+1. First, the author uses the simplest MSE to formalize the learning problem of NNUE into a classic regression problem. The predict value is the `shallow_value` mentioned above, and the label value is `deep_value`, so the first `CROSS_ENTOROPY_FOR_VALUE` is obtained (although The name may have been added later);
+2. Later, the author began to consider adding `game_result` to the target value. However, the ranges of the two target values, deep_value and game_result, are not consistent. The range of `game_result` is {-1, +1}, and `deep_value` or `shadow_value` is [-32000, +32000]. So the author applied a normalization function `winning_percentage()`, which uses a scalar plus a sigmoid function to convert all evaluation scores into "winning probability". In this way, both ranges of the two labels are now within [0, 1]. 
+In order to test the performance of this loss, the author did not introduce `game_result` immediately, but still used the probability normalized `deep_value` and `shallow_value` (that is, `p`, `q`) as loss input, thus the second loss `WINNING_PERCENTAGE` was obtained;
+3. Then, during the procedure of taking the gradient, the author found that because a sigmoid function was introduced in `winning_percentage()`, the derivative of the corresponding MSE loss always had a painful `dsigmoid` function (the derivative function of sigmoid), which was ugly and annoying.
+So the author introduced the Cross-Entropy function, a good friend of sigmoid or softmax: when these two are used together, during the process of taking derivative, the former's $exp()$ and the latter's $log()$ will cancel each other out, Finally, a derivative in the form of subtraction that is consistent with the MSE derivative is obtained. So the author changed its base loss from MSE to Cross-Entropy, which is the third loss `CROSS_ENTOROPY`;
+4. Finally, the author formally introduced `game_result`, and substituted the weighted average of the normalized `deep_value` and `game_result` (`p` and `t`) into cross_entropy as the label (`m`) to obtain the final `ELMO_METHOD`.
+
+Therefore, the four different losses are talking about the same thing: they are all improvements to the loss of the standard regression problem based on different motivations.
+
+
+<!--
+### learner训练过程中显示的loss
+
+我们已经知道learner最终使用的是ELMO_METHOD，然而learner在训练过程中依旧会输出很多不同名字的loss值，让人费解。比如像下面这样：
+```
+PROGRESS: Fri Sep 25 12:38:26 2020, 4455000015 sfens, iteration 4455, eta = 0.25, hirate eval = 109 ,
+test_cross_entropy_eval = 0.262824 , test_cross_entropy_win = 0.142044 , test_entropy_eval = 0.221711 , 
+test_entropy_win = -9.99999e-07 , test_cross_entropy = 0.262824 , test_entropy = 0.221711 , 
+norm = 1.07618e+09 , move accuracy = 36.1626% , 
+learn_cross_entropy_eval = 0.290224 , learn_cross_entropy_win = 0.182584 , learn_entropy_eval = 0.255716 , 
+learn_entropy_win = -1e-06 , learn_cross_entropy = 0.290224 , learn_entropy = 0.255716
+```
+其实这些值大部分只是用来参考，或用于debug。
+
+我们在前文已提到，预测值只有q，但目标签值可以有三个：p、t、m。所以理论上，我们可以让p和每个标签值都算一次loss，如此就得到至少三个不同的Cross-Entropy loss值：
+
+* **cross_entropy**：即Cross-Entropy(m, q)，这是真正的ELMO_METHOD loss的值；
+* **cross_entropy_eval**：即Cross-Entropy(p, q)，其名字中的“eval”指的就是p；
+* **cross_entropy_win**：即Cross-Entropy(t, q)，其名字中的“win”指的就是t；
+
+此外，作为参考值作者还让p、t、m各自和自己计算了个entropy（因为和自己计算，也就没有“cross”什么事了，所以名字就是把上面三个的“cross”直接拿掉）。注意这三个值都是常量，他们是不会随训练进行而改变的，所以纯为参考值：
+
+* **entropy**：即Cross-Entropy(m, m)；
+* **entropy_eval**：即Cross-Entropy(p, p)，其名字中的“eval”指的就是p；
+* **entropy_win**：即Cross-Entropy(t, t)，其名字中的“win”指的就是t；
+
+最后，每个loss值的前面都会有“**learn_**”或者“**test_**”这样的前缀，表示是在训练集或验证集上计算出的loss。
+
+除了loss，learner还会在验证集上计算一个move accuracy。其方法就是让搜索使用当前的NNUE网络估值函数搜索出一个最佳着法，然后拿它和PackedSfenValue中的move相比较，如果一致就在分子上加一，最后除以数据集的大小得到accuracy。一般这个move accuracy会在30%左右。它能够一定程度地反映网络水平的下限，有助于观察早期训练的进展（但后期这数字变化就不大了）。
+-->
+
+### The Loss Displayed during Training
+
+We have already known that the learner eventually applied `ELMO_METHOD` loss for training, but the learner will output a bunch of other loss values ​​​​with different names after some iterations during training, which is confusing. For example:
+```
+PROGRESS: Fri Sep 25 12:38:26 2020, 4455000015 sfens, iteration 4455, eta = 0.25, hirate eval = 109 ,
+test_cross_entropy_eval = 0.262824 , test_cross_entropy_win = 0.142044 , test_entropy_eval = 0.221711 , 
+test_entropy_win = -9.99999e-07 , test_cross_entropy = 0.262824 , test_entropy = 0.221711 , 
+norm = 1.07618e+09 , move accuracy = 36.1626% , 
+learn_cross_entropy_eval = 0.290224 , learn_cross_entropy_win = 0.182584 , learn_entropy_eval = 0.255716 , 
+learn_entropy_win = -1e-06 , learn_cross_entropy = 0.290224 , learn_entropy = 0.255716
+```
+In fact, most of these values ​​are just baseline values, or for debugging only.
+
+As we mentioned above, the only predicted value is `q`, but there could be three label values: `p`, `t`, and `m`. 
+So theoretically, we can let q combine with each label value for computing a loss, and get at least three different Cross-Entropy loss values:
+
+* **cross_entropy**: `Cross-Entropy(m, q)`, which is the actual value of ELMO loss;
+* **cross_entropy_eval**: `Cross-Entropy(p, q)`, the "eval" in its name refers to p;
+* **cross_entropy_win**: `Cross-Entropy(t, q)`, the "win" in its name refers to t;
+
+In addition, as a baseline value, the author also uses p, t, and m to compute an entropy against themselves (because they are computed against themselves, there is no "cross" anymore. So the term "cross" is removed from their original names). Note that these three values ​​are always constants - they will never change with the progress of training:
+
+* **entropy**: `Cross-Entropy(m, m)`;
+* **entropy_eval**: `Cross-Entropy(p, p)`, the "eval" in its name refers to p;
+* **entropy_win**: `Cross-Entropy(t, t)`, the "win" in its name refers to t;
+
+Finally, each loss name could be preceded by a prefix such as "**learn_**" or "**test_**", indicating that the loss is computed on the training set or validation set.
+
+Besides the loss, the learner also computes a move accuracy on the validation set.
+The accuracy is obtained in this way: 
+First, for each position in the validation set, run search with the current NNUE network as evaluation function to get a base move. Second, check whether this move is consistent with the move in `PackedSfenValue` or not.
+Finally, compute the percentage of consistent best moves among the entire validation set as the move accuracy. 
+The move accuracy will be around 30% on average. To some extent, it can reflect the quality of the trained network, and helps users to observe the progress of training in early stages (but as the training goes, this accuracy will converge and remain stable for a long time).
+
+
+<!--
+### Optimization
+
+这一部分相对简单。Nodchip在他的代码中实现了两种update方法：SGD和AdaGrad。根据他的评价，SGD占用内存少，但是准确性捉急；相比较而言AdaGrad更加稳定。作者最终选择了后者。
+-->
+
+### Optimization
+
+This part is relatively simple. Nodchip integrated two weight update algorithms in his code: Stochastic Gradient Descent (SGD) and Adaptive Gradient (AdaGrad). According to his comment, SGD takes up less memory, but the learning result is not the best; on the other hand, AdaGrad outputs a better weight and is more stable. Nodchip eventually chose the latter one, but you can always set this in the input options.
+
+
+
+
 ## (To be continued...)

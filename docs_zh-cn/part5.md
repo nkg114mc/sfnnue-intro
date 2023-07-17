@@ -190,7 +190,7 @@ learn_entropy_win = -1e-06 , learn_cross_entropy = 0.290224 , learn_entropy = 0.
 ```
 其实这些值大部分只是用来参考，或用于debug。
 
-我们在前文已提到，预测值只有q，但目标签值可以有三个：p、t、m。所以理论上，我们可以让p和每个标签值都算一次loss，如此就得到至少三个不同的Cross-Entropy loss值：
+我们在前文已提到，预测值只有q，但目标签值可以有三个：p、t、m。所以理论上，我们可以让q和每个标签值都算一次loss，如此就得到至少三个不同的Cross-Entropy loss值：
 
 * **cross_entropy**：即Cross-Entropy(m, q)，这是真正的ELMO_METHOD loss的值；
 * **cross_entropy_eval**：即Cross-Entropy(p, q)，其名字中的“eval”指的就是p；
