@@ -548,8 +548,7 @@ nnue-pytorch provides a variety of options of training position filtering, such 
 
 To have a better understanding about nnue-pytorch, I also tried to train a network using the generated data by myself. The following is the plot of losses by iteration on the train set and validation set:
 
-| ![loss-train](./img/npt-trainloss.png) |
-| ![loss-valid](./img/npt-valloss.png)   |
+| ![loss-train](./img/npt-trainloss.png) ![loss-valid](./img/npt-valloss.png)   |
 | :---: |
 | <em>Cross-entropy losses vs training iteration plot on train and validation set. </em> |
 
