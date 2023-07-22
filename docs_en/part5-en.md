@@ -401,8 +401,8 @@ We might make a reasonable guess about Nodchip's idea when designing loss:
 2. Later, the author began to consider adding `game_result` to the target value. However, the ranges of the two target values, deep_value and game_result, are not consistent. The range of `game_result` is {-1, +1}, and `deep_value` or `shadow_value` is [-32000, +32000]. So the author applied a normalization function `winning_percentage()`, which uses a scalar plus a sigmoid function to convert all evaluation scores into "winning probability". In this way, both ranges of the two labels are now within [0, 1]. 
 In order to test the performance of this loss, the author did not introduce `game_result` immediately, but still used the probability normalized `deep_value` and `shallow_value` (that is, `p`, `q`) as loss input, thus the second loss `WINNING_PERCENTAGE` was obtained;
 3. Then, during the procedure of taking the gradient, the author found that because a sigmoid function was introduced in `winning_percentage()`, the derivative of the corresponding MSE loss always had a painful `dsigmoid` function (the derivative function of sigmoid), which was ugly and annoying.
-So the author introduced the Cross-Entropy function, a good friend of sigmoid or softmax: when these two are used together, during the process of taking derivative, the former's $exp()$ and the latter's $log()$ will cancel each other out, Finally, a derivative in the form of subtraction that is consistent with the MSE derivative is obtained. So the author changed its base loss from MSE to Cross-Entropy, which is the third loss `CROSS_ENTOROPY`;
-4. Finally, the author formally introduced `game_result`, and substituted the weighted average of the normalized `deep_value` and `game_result` (`p` and `t`) into cross_entropy as the label (`m`) to obtain the final `ELMO_METHOD`.
+So the author introduced the Cross-Entropy function, the buddy of sigmoid or softmax function: when these two are used together, during the process of taking derivative, the former's $exp()$ and the latter's $log()$ will cancel each other out. A derivative in the form of subtraction that is consistent with the MSE derivative is obtained. So the author changed its base loss from MSE to Cross-Entropy, which is the third loss `CROSS_ENTOROPY`;
+1. Finally, the author formally introduced `game_result`, and substituted the weighted average of the normalized `deep_value` and `game_result` (`p` and `t`) into cross_entropy as the label (`m`) to obtain the final `ELMO_METHOD`.
 
 Therefore, the four different losses are talking about the same thing: they are all improvements to the loss of the standard regression problem based on different motivations.
 
@@ -458,7 +458,7 @@ So theoretically, we can let q combine with each label value for computing a los
 * **cross_entropy_eval**: `Cross-Entropy(p, q)`, the "eval" in its name refers to p;
 * **cross_entropy_win**: `Cross-Entropy(t, q)`, the "win" in its name refers to t;
 
-In addition, as a baseline value, the author also uses p, t, and m to compute an entropy against themselves (because they are computed against themselves, there is no "cross" anymore. So the term "cross" is removed from their original names). Note that these three values ​​are always constants - they will never change with the progress of training:
+In addition, as a baseline value, the author also uses `p`, `t`, and `m` to compute an entropy against themselves (because they are computed against themselves, there is no "cross" anymore. So the term "cross" is removed from their original names). Note that these three values ​​are always constants - they will never change with the progress of training:
 
 * **entropy**: `Cross-Entropy(m, m)`;
 * **entropy_eval**: `Cross-Entropy(p, p)`, the "eval" in its name refers to p;
@@ -485,5 +485,101 @@ This part is relatively simple. Nodchip integrated two weight update algorithms 
 
 
 
+<!--
 
-## (To be continued...)
+### nnue-pytorch
+
+前文已经提到了，NNUE的一大特色就是它的训练仅需要预生成的数据作为输入，而不是在对局中动态的生成训练数据。对局过程（哪怕是self-play）是需要引擎参与的，但是读取数据和训练网络并不会用到引擎，于是让训练器与国象引擎解耦就成为了一种很自然的想法。训练器也可以有更加灵活的实现——比如说使用功能更强大的深度学习框架PyTorch去实现训练器。nnue-pytorch工程就是基于这样的想法而诞生的。
+
+![title](./img/p5-4.png)
+
+nnue-pytorch（[Github repo](https://github.com/glinscott/nnue-pytorch)）最早由gladius等Stockfish开发测试团队的成员及爱好者在2020年11月启动，Nodchip也参与其中。repo的创建者gladius[在TalkChess论坛里发了个帖子](https://www.talkchess.com/forum3/viewtopic.php?f=7&t=75724)，将主要进展都更新在里面。截止到2021年1月，nnue-pytorch已经可以训练出与Stockfish的master branch实力相当的网络（差5 ELO，基本可以忽略不计），已经可以比拟Nodchip的原版训练器了。
+
+我简要的翻译了一下gladius在他的贴子的最后一次更新中提到的小改进：
+
+1. 做了大量实验来确定生成最佳训练数据的方法。目前最佳的训练数据是靠如下方法生成：先生成一盘包含一定随机性的完整对局，然后对对局中的每个局面用9层的搜索重新赋予估值。（按理说数据生成与训练器本身无关，但仍然与最后结果有关，所以算是对“训练”的整体改进）；
+2. 更换了优化器：目前使用ranger optimizer（貌似是对Adam算法的改进实现？）：[Ranger-Deep-Learning-Optimizer](https://github.com/lessw2020/Ranger-Deep-Learning-Optimizer)；
+3. 可视化了网络的活跃度，发现pytorch训练出的网络有很多“死神经元”，这促使“我们”对Adam优化器参数的进一步调整。具体来说，Adam算法里的eps值对死神经元有很大影响。怀疑这可能跟训练过程中过小的loss值有关。具体背景请详见 [https://github.com/glinscott/nnue-pytorch/issues/17](https://github.com/glinscott/nnue-pytorch/issues/17)与[https://github.com/official-stockfish/Stockfish/issues/3274](https://github.com/official-stockfish/Stockfish/issues/3274)；
+4. 把估值的放缩因子从600改回到361（这里解释一下：在上面loss部分，我们曾提到winning_percentage(value) = sigmoid(value / PawnValueEg / 4.0 * log(10.0)) 。这里边只有value是变量，后边的 PawnValueEg / 4.0 * log(10)都是常量。也就是说value除以了一个常数放缩因子，然后才被带入到loss函数中。那么同样的，在求导过程中，你的梯度依然需要带着这个常数放缩因子，而与此同时梯度在做weight update时还需要乘以learning rate，于是最终实际上的learning rate其实是参数指定的learning rate除以放缩因子。换句话说，这个放缩因子其实扮演了部分learning rate的角色，这就是为什么他们不断的在调试这个参数，其实是在调试learning rate。这个放缩因子在Nodchip的原版训练器中是PawnValueEg * 4.0 / log(10) = 206 / 4.0 * 2.30256 = 大约360，取整为361。gladius他们刚开始时大概是嫌361太小就把这个值改成了600，如今又改回了361，可能这个值确实有它的道理）；
+5. 引入了“退火”机制：learning rate在每75个epoch之后，缩减为之前的0.3倍；
+6. 引入了数据洗牌。由于训练需要多次遍历数据集，洗牌帮助良多；
+7. 每次只使用整个训练数据中（随机选取出的）的N个局面（大概类似于Ensemble方法中的Bagging？）；
+8. 将batch size由16384改为8192。
+
+以上仅是帖子中提到的nnue-pytorch最新的改进。除此之外，改进data pipeline，使用C++实现文件读取、训练局面解码等功能，应用sparse tensor等等都大大改善了训练速度和质量。其中最重要的一项就是加入了训练局面筛选功能，例如允许用户将非安静局面筛除，如我们在Inference部分描述的那样。
+
+-->
+
+
+### nnue-pytorch
+
+As mentioned above, a major feature of NNUE is that its training only requires pre-generated data as input, rather than dynamically generating training data during the game. The game process (even self-play) requires the participation of the engine, but the engine is not used for reading data and training the network, so it is a natural idea to decouple the trainer from the chess engine. 
+
+The trainer can also have a more flexible implementation - for example, use the more powerful deep learning library _PyTorch_ to implement the trainer. The _nnue-pytorch_ project was started based on this idea.
+
+![pic5-4](./img/p5-4.png)
+
+nnue-pytorch ([Github repo](https://github.com/glinscott/nnue-pytorch)) was first launched in November 2020 by the Stockfish development and testing team. Nodchip also participated in this project. Gladius, the creator of the repo, published a [post on the TalkChess forum]((https://www.talkchess.com/forum3/viewtopic.php?f=7&t=75724)), updating the main progress in the discussion threads.
+By Jan 2021, nnue-pytorch has been able to train a network comparable to Stockfish's master branch (the difference is 5 ELO, which is basically negligible), and it can already work as good as the Nodchip's original trainer.
+
+
+I just copied the itermized improvements of nnue-pytorch that gladius mentioned in the last (Jan 9, 2021) message of his post:
+
+> 1. A ton of experimentation on the best data to use. Current best data uses generated games with a fair bit of randomness, then rescored using a d9 pass after the fact.
+> 2. Switching to using the ranger optimizer: [https://github.com/lessw2020/Ranger-Deep-Learning-Optimizer](https://github.com/lessw2020/Ranger-Deep-Learning-Optimizer)
+> 3. Visualizing the activations of the net, discovering that the pytorch trained nets had numerous dead neurons. That led to further tuning of the optimizer parameters (in particular, the ADAM eps value had a large effect on the dead neurons - suspicion is this comes from the very low loss values that we typically see during training). See [https://github.com/glinscott/nnue-pytorch/issues/17](https://github.com/glinscott/nnue-pytorch/issues/17) and [https://github.com/official-stockfish/Stockfish/issues/3274](https://github.com/official-stockfish/Stockfish/issues/3274) for background.
+>
+> Eg. compare master net:
+> ![post-1](./img/103350567-ba8da580-4aa0-11eb-8441-4308bfe62c48.png)
+> 
+> vs old pytorch net:
+> ![post-2](./img/103421543-d309c880-4b51-11eb-9d77-4c9539a1b7d6.png)
+> 4. Switching scaling of the evaluations to 361 from 600 (I had mentioned this earlier, but it did end up being beneficial).
+> 5. Introducing learning rate drops by 0.3x every 75 epochs.
+> 6. Shuffling the input data. We do multiple passes through the data, so shuffling helped a lot.
+> 7. Only using every N positions in the data (eg. 7). This helps so that each batch gets to see more variety of games, as opposed to a bunch of positions from one game. We end up seeing all the data in multiple passes through, so it doesn't reduce the effective data size.
+> 8. Reducing batch size from 16384 to 8192.
+
+Besides improvements mentioned in the post, nnue-pytorch developers also improved the data pipeline (using C++ to reimplement data loader modules such as file reading and training situation decoding) and applied sparse tensors. All these had greatly speeded up the training process.
+nnue-pytorch provides a variety of options of training position filtering, such as "non-quiet position filter", "random position filter", etc., which dramatically enhanced the robustness of training and the quality of trained network, as we described in the Inference section.
+
+
+### nnue-pytorch First Try
+
+To have a better understanding about nnue-pytorch, I also tried to train a network using the generated data by myself. The following is the plot of losses by iteration on the train set and validation set:
+
+| ![loss-train](./img/npt-trainloss.png) |
+| ![loss-valid](./img/npt-valloss.png)   |
+| :---: |
+| <em>Cross-entropy losses vs training iteration plot on train and validation set. </em> |
+
+To test the strength of the trained network, I use Stockfish 13 engine to load this network and play a tournament against the official Stockfish 13 (using the best network `nn-62ef826d1a6d.nnue` by Aug 2021) for 800 games. Here is the output of [BayesELO](https://www.remi-coulom.fr/Bayesian-Elo/):
+
+| Rank Name | Elo | + | - | games | score | oppo. | draws |
+| :-- | :--: | :--: | :--: | :--: | :--: | :--: | :--: |
+| **Official Stockfish 13**    | 	60  | 10 | 10 | 800 | 71% | -60 | 58% |
+| **Stockfish 13 with my net** |  -60 | 10 | 10 | 800 | 29% | 60  | 58% |
+
+The results in the table shows that the engine with my trained network is around 120 ELO weaker than the official Stockfish 13. Given the fact that I did not put too much time into carefully generating the training data and tuning the learning parameters, such a result is not bad in my opinion.
+
+
+
+
+----
+
+<!--
+### PS：
+
+* 当前的Stockfish-NNUE的训练数据生成已经不再使用Nodchip的原版生成器了，而是用如下版本（其实是官方Stockfish的一个branch）：[GitHub - official-stockfish/Stockfish at tools](https://github.com/official-stockfish/Stockfish/tree/tools)
+* nnue-pytorch的文档部分包含了一个对NNUE非常详细的介绍（详细到我都觉得我这个系列写了个寂寞），包含了很多图和代码，感兴趣的话推荐一看：[https://github.com/glinscott/nnue-pytorch/blob/master/docs/nnue.md](https://github.com/glinscott/nnue-pytorch/blob/master/docs/nnue.md)
+-->
+
+### PS:
+
+* The current Stockfish-NNUE training data generation is no longer using the original Nodchip’s generator. Instead, developers start to use the following version (it is actually a branch of the official Stockfish): [GitHub - official-stockfish/Stockfish at tools](https://github.com/official-stockfish/Stockfish/tree/tools)
+* The documents of nnue-pytorch contains a very detailed introduction to NNUE networks, including a lot of pictures and codes. If you are interested, please take a look: [https://github.com/glinscott/nnue-pytorch/blob/master/docs/nnue.md](https://github.com/glinscott/nnue-pytorch/blob/master/docs/nnue.md)
+* This series of articles were originally written in winter 2020. The architecture of the network has evolved a lot since summer 2021, and was no longer compatible with the architecture introduced in this article series. The last official Stockfish release that supports the architecture (HalfKP_256X2_32_32) in this article series is [Stockfish 13](https://stockfishchess.org/blog/2021/stockfish-13/). Check [here](https://github.com/glinscott/nnue-pytorch/blob/master/docs/nnue.md#architectures-and-new-directions) to learn more about the latest network architecture updates.
+
+### References
+
+[^1]: Shogo Takeuchi, Tomoyuki Kaneko, Kazunori Yamaguchi, Satoru Kawai. Visualization and Adjustment of Evaluation Functions Based on Evaluation Values and Win Probability. AAAI 2007 https://www.aaai.org/Papers/AAAI/2007/AAAI07-136.pdf
