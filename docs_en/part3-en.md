@@ -286,7 +286,7 @@ All of these are designed for the CPU vector instructions to conveniently load o
 
 | ![pic3-6](./img/p3-6.png) |
 | :---: |
-| <em> _w_ matrix flattening orders: (a) "row-major" order applied in FeatureTransformer, (b) "column-major" order applied in other layers.</em> |
+| <em> **w** matrix flattening orders: (a) "row-major" order applied in FeatureTransformer, (b) "column-major" order applied in other layers.</em> |
 
 
 
