@@ -80,7 +80,6 @@ The full name of NNUE is [Efficiently Updatable Neural Network](https://github.c
 4. A parallel data generation algorithm is given, using the original Stockfish to automatically and efficiently generate training data.
 
 It is no doubt that Stockfish-NNUE is by-far the most successful attempt at the method of "alpha-beta search + neural network evaluation" after Giraffe. In the three questions mentioned above, Stockfish-NNUE provided an acceptable answer to each of them. This gives programmers who applied alpha-beta search in their chess program a new direction to pursue. The application of NNUE technology makes Stockfish become a challenger to Lc0 with strong potential, especially when Lc0 has been in the first place for nearly a year.
-<!-- After that, I will introduce the application of NNUE in Stockfish in more detail several times. -->
 
 | ![pic1-1](./img/p1-1.png) |
 | :---: |

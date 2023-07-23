@@ -91,7 +91,7 @@ Imagine that if the training phase of NNUE is completely dependent on `score`, a
 2. If the estimation of this handwritten function is very accurate, then the training result should be not bad, but which part contributes most to this good result?The training algorithm itself, or the high-quality data labeling provided by this handwritten function? And since we already have such an accurate handwritten evaluation function, why do we need to train another NNUE network?
 
 Obviously, in either case, the training results of NNUE will heavily depend on the quality of the handwritten evaluation function, which leads to a "chicken or the egg" problem. 
-Adding the `game_result` might not completely solve the dependency of the handwritten evaluation function in the training process, it provides an additional source of labeling in training to correct the negative impact of non-perfect `score` caused by the inaccuracy of  handwritten evaluation function.
+Adding the `game_result` might not completely solve the dependency of the handwritten evaluation function in the training process, it provides an additional source of labeling in training to correct the negative impact of non-perfect `score` caused by the inaccuracy of  handwritten evaluation function[^1].
 
 
 <!--

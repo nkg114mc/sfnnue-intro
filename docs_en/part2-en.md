@@ -206,6 +206,7 @@ Piece-square enumeration value = 63 * 641 + 9 * 64 + 0 + 1 = 40960
 
 以上便是NNUE单方棋盘表示向量的计算方法。对于对弈双方，NNUE首先计算己方的表示向量，再计算对方的向量。最后将两方的棋盘表示向量按己方、对方的顺序拼接为一个82048维的完整表示[^1]。
 -->
+
 ### Piece-Square Enumeration Value Binarization
 
 The board representation of a one side is a set of all the positional relationships mentioned above that appear on the current board. 
@@ -221,8 +222,7 @@ Because there are only thirty-two pieces on the chessboard, and each dimension i
 
 
 The above is the procedure for NNUE to compute the board representation vector for a single side. 
-For both players, NNUE first calculates the representation vector of its own side, and then calculates the vector of the opponent. Finally, the chessboard representation vectors of the two sides are spliced ​​into a complete representation of 82048 dimensions according to the order of one's own side and the other side 's .
-
+For both players, NNUE first calculates the representation vector of its own side, and then calculates the vector of the opponent. Finally, the board representation vectors of the two sides are spliced ​​into a complete representation of 82048 dimensions follwing the order of "our side first, their side then"[^1].
 
 ![pic2-5](./img/p2-5-en.png)
 
@@ -240,4 +240,4 @@ In order to speed up the computation of the board representation, NNUE uses simp
 
 ### References
 
-[^1] This is just for convenience of description. In fact, NNUE did not splicing the 82048-dimensional vector immediately, but directly used the 41024-dimensional vectors of both parties to calculate the output of the first layer of the network. The output for each side is a 256-dimensional vector. Then the two vectors of both sides are concatenated into a 512-dimensional vector as the input of the next layer.
+[^1]: This is just for convenience of description. In fact, NNUE did not splicing the 82048-dimensional vector immediately, but directly used the 41024-dimensional vectors of both parties to calculate the output of the first layer of the network. The output for each side is a 256-dimensional vector. Then the two vectors of both sides are concatenated into a 512-dimensional vector as the input of the next layer.
